@@ -1,8 +1,17 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import axios from 'axios';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Upload, FileUp, Loader2, RefreshCw, Filter, XCircle } from 'lucide-react';
-import { format, parseISO, isSameDay } from 'date-fns';
+import { 
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList 
+} from 'recharts';
+import { 
+  Upload, Loader2, RefreshCw, Filter, XCircle, Calendar, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown 
+} from 'lucide-react';
+import { 
+  format, parseISO, isSameDay, startOfToday, endOfToday, 
+  startOfWeek, endOfWeek, startOfMonth, endOfMonth, 
+  startOfQuarter, endOfQuarter, startOfYear, endOfYear, 
+  subWeeks, subMonths, isWithinInterval 
+} from 'date-fns';
 import { de } from 'date-fns/locale';
 
 // --- TYPEN ---
@@ -24,9 +33,15 @@ interface DailyStats {
   projects: string[];
 }
 
+type SortKey = 'date' | 'source' | 'project' | 'description' | 'duration';
+type SortDirection = 'asc' | 'desc';
+
+type DatePreset = 'TODAY' | 'WEEK' | 'MONTH' | 'QUARTER' | 'YEAR' | 'LAST_WEEK' | 'LAST_MONTH' | 'ALL';
+
 const API_URL = '/api';
 
 function App() {
+  // --- STATE ---
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -35,9 +50,22 @@ function App() {
   const [filterSource, setFilterSource] = useState<string>('ALL');
   const [filterProject, setFilterProject] = useState<string>('ALL');
   
+  // Date Range State
+  const [datePreset, setDatePreset] = useState<DatePreset>('MONTH');
+  const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>(() => {
+    // Default: This Month
+    return { start: startOfMonth(new Date()), end: endOfMonth(new Date()) };
+  });
+
+  // Sorting State
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({
+    key: 'date',
+    direction: 'desc' // Neueste zuerst
+  });
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 1. Daten laden
+  // --- LOGIC: DATA FETCHING ---
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -56,25 +84,118 @@ function App() {
     fetchData();
   }, []);
 
-  // 2. Filter Logik (useMemo für Performance)
+  // --- LOGIC: DATE PRESETS ---
+  const applyDatePreset = (preset: DatePreset) => {
+    setDatePreset(preset);
+    const now = new Date();
+    
+    // Wir setzen den start auf 00:00:00 und end auf 23:59:59 für korrekte Vergleiche
+    const opts = { locale: de, weekStartsOn: 1 as const }; // Woche startet Montag
+
+    let start = new Date(0); // 1970 (ALL)
+    let end = new Date(2100, 0, 1); 
+
+    switch (preset) {
+        case 'TODAY':
+            start = startOfToday();
+            end = endOfToday();
+            break;
+        case 'WEEK': // This week
+            start = startOfWeek(now, opts);
+            end = endOfWeek(now, opts);
+            break;
+        case 'MONTH': // This month
+            start = startOfMonth(now);
+            end = endOfMonth(now);
+            break;
+        case 'QUARTER': // This quarter
+            start = startOfQuarter(now);
+            end = endOfQuarter(now);
+            break;
+        case 'YEAR': // This year
+            start = startOfYear(now);
+            end = endOfYear(now);
+            break;
+        case 'LAST_WEEK':
+            const lastWeek = subWeeks(now, 1);
+            start = startOfWeek(lastWeek, opts);
+            end = endOfWeek(lastWeek, opts);
+            break;
+        case 'LAST_MONTH':
+            const lastMonth = subMonths(now, 1);
+            start = startOfMonth(lastMonth);
+            end = endOfMonth(lastMonth);
+            break;
+        case 'ALL':
+        default:
+            // Bleibt 1970 - 2100
+            break;
+    }
+    setDateRange({ start, end });
+  };
+
+  // --- LOGIC: FILTERING & SORTING ---
+  
+  // 1. Filtern
   const filteredEntries = useMemo(() => {
     return entries.filter(entry => {
+      // Source & Project Filter
       const matchesSource = filterSource === 'ALL' || entry.source === filterSource;
       const matchesProject = filterProject === 'ALL' || entry.project === filterProject;
-      return matchesSource && matchesProject;
-    });
-  }, [entries, filterSource, filterProject]);
+      
+      // Date Range Filter
+      const entryDate = parseISO(entry.date);
+      // isWithinInterval wirft Fehler bei ungültigen Daten, daher try/catch sicherheitshalber oder Checks
+      let matchesDate = true;
+      if (datePreset !== 'ALL') {
+          matchesDate = isWithinInterval(entryDate, { start: dateRange.start, end: dateRange.end });
+      }
 
-  // Liste aller verfügbaren Projekte für das Dropdown
+      return matchesSource && matchesProject && matchesDate;
+    });
+  }, [entries, filterSource, filterProject, dateRange, datePreset]);
+
+  // 2. Sortieren
+  const sortedEntries = useMemo(() => {
+    const sorted = [...filteredEntries];
+    sorted.sort((a, b) => {
+        let valA: any = a[sortConfig.key];
+        let valB: any = b[sortConfig.key];
+
+        // Spezialfall Datum (Strings vergleichen geht, aber TimeStamp ist sauberer)
+        if (sortConfig.key === 'date') {
+            valA = new Date(a.date).getTime();
+            valB = new Date(b.date).getTime();
+        }
+        // Spezialfall Strings (Case insensitive)
+        if (typeof valA === 'string') valA = valA.toLowerCase();
+        if (typeof valB === 'string') valB = valB.toLowerCase();
+
+        if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+    return sorted;
+  }, [filteredEntries, sortConfig]);
+
+  // Helper für Tabellen-Header Klick
+  const handleSort = (key: SortKey) => {
+      setSortConfig(current => ({
+          key,
+          direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
+      }));
+  };
+
   const uniqueProjects = useMemo(() => {
     const projects = new Set(entries.map(e => e.project).filter(Boolean));
     return Array.from(projects).sort();
   }, [entries]);
 
-  // 3. Daten aggregieren für das Diagramm (basiert auf gefilterten Daten)
+  // --- LOGIC: AGGREGATION (CHART) ---
   const aggregatedData: DailyStats[] = useMemo(() => {
     const map = new Map<string, DailyStats>();
 
+    // Wir nutzen hier filteredEntries (Zeitraum beachten!)
     filteredEntries.forEach(entry => {
       const dateObj = parseISO(entry.date);
       const dateKey = format(dateObj, 'yyyy-MM-dd');
@@ -93,7 +214,6 @@ function App() {
       const dayStat = map.get(dateKey)!;
       dayStat.totalHours += entry.duration;
       
-      // Aufteilung nach Quelle für Stacked Bar Chart
       if (entry.source === 'TOGGL') {
         dayStat.togglHours += entry.duration;
       } else {
@@ -108,10 +228,11 @@ function App() {
     return Array.from(map.values()).sort((a, b) => a.dateStr.localeCompare(b.dateStr));
   }, [filteredEntries]);
 
-  // KPIs berechnen
+  // KPIs
   const totalHoursFiltered = filteredEntries.reduce((acc, curr) => acc + curr.duration, 0);
   const today = new Date();
-  const hoursToday = filteredEntries
+  const hoursToday = entries // Hier nehmen wir ALLE Einträge von heute, unabhängig vom Datumsfilter oben? Oder auch gefiltert?
+                             // Toggl zeigt bei "This Month" trotzdem "Today" KPI an. Wir nehmen hier 'entries' aber filtern auf heute.
     .filter(e => isSameDay(parseISO(e.date), today))
     .reduce((acc, curr) => acc + curr.duration, 0);
 
@@ -143,32 +264,25 @@ function App() {
     <div className="min-h-screen bg-gray-50 text-gray-800 p-6 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* Header Area */}
+        {/* Header */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">vihais Tracker</h1>
-            <p className="text-sm text-gray-500">Arbeitszeiten Übersicht</p>
+            <p className="text-sm text-gray-500">
+                {datePreset === 'ALL' 
+                    ? 'Alle Zeiträume' 
+                    : `${format(dateRange.start, 'dd.MM.yyyy')} - ${format(dateRange.end, 'dd.MM.yyyy')}`
+                }
+            </p>
           </div>
           
           <div className="flex flex-wrap items-center gap-3">
-              <button 
-                  onClick={fetchData} 
-                  className="p-2.5 text-gray-600 hover:bg-gray-100 rounded-lg transition" 
-                  title="Aktualisieren"
-              >
+              <button onClick={fetchData} className="p-2.5 text-gray-600 hover:bg-gray-100 rounded-lg transition" title="Aktualisieren">
                   <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
               </button>
-              
               <div className="h-8 w-px bg-gray-200 mx-2 hidden md:block"></div>
-
               <div className="relative">
-                  <input 
-                      type="file" 
-                      ref={fileInputRef}
-                      onChange={handleFileUpload} 
-                      accept=".csv"
-                      className="hidden"
-                  />
+                  <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" className="hidden" />
                   <button 
                       onClick={() => fileInputRef.current?.click()}
                       disabled={uploading}
@@ -181,43 +295,67 @@ function App() {
           </div>
         </header>
 
-        {/* Filter Bar */}
+        {/* Filter Bar (Controls) */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2 text-gray-500 mr-2">
-                <Filter size={18} />
-                <span className="text-sm font-medium">Filter:</span>
+            
+            {/* Date Preset Dropdown */}
+            <div className="relative group">
+                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 px-3 py-2.5 rounded-lg text-sm text-gray-700 min-w-[160px]">
+                    <Calendar size={16} className="text-gray-400"/>
+                    <select 
+                        value={datePreset}
+                        onChange={(e) => applyDatePreset(e.target.value as DatePreset)}
+                        className="bg-transparent border-none focus:ring-0 p-0 text-gray-700 font-medium w-full cursor-pointer appearance-none"
+                    >
+                        <option value="TODAY">Heute</option>
+                        <option value="WEEK">Diese Woche</option>
+                        <option value="MONTH">Dieser Monat</option>
+                        <option value="QUARTER">Dieses Quartal</option>
+                        <option value="YEAR">Dieses Jahr</option>
+                        <option value="LAST_WEEK">Letzte Woche</option>
+                        <option value="LAST_MONTH">Letzter Monat</option>
+                        <option value="ALL">Alles</option>
+                    </select>
+                    <ChevronDown size={14} className="text-gray-400 absolute right-3 pointer-events-none"/>
+                </div>
             </div>
 
-            {/* Source Filter */}
-            <select 
-                value={filterSource} 
-                onChange={(e) => setFilterSource(e.target.value)}
-                className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2.5 min-w-[120px]"
-            >
-                <option value="ALL">Alle Quellen</option>
-                <option value="TOGGL">Toggl Track</option>
-                <option value="TEMPO">Jira Tempo</option>
-            </select>
+            <div className="h-8 w-px bg-gray-200 mx-1 hidden md:block"></div>
 
-            {/* Project Filter */}
-            <select 
-                value={filterProject} 
-                onChange={(e) => setFilterProject(e.target.value)}
-                className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-lg focus:ring-indigo-500 focus:border-indigo-500 block p-2.5 min-w-[150px] max-w-xs"
-            >
-                <option value="ALL">Alle Projekte</option>
-                {uniqueProjects.map(proj => (
-                    <option key={proj} value={proj}>{proj}</option>
-                ))}
-            </select>
+            {/* Source & Project */}
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 px-3 py-2.5 rounded-lg text-sm text-gray-700">
+                <Filter size={16} className="text-gray-400" />
+                <select 
+                    value={filterSource} 
+                    onChange={(e) => setFilterSource(e.target.value)}
+                    className="bg-transparent border-none focus:ring-0 p-0 w-[110px]"
+                >
+                    <option value="ALL">Alle Quellen</option>
+                    <option value="TOGGL">Toggl</option>
+                    <option value="TEMPO">Tempo</option>
+                </select>
+            </div>
 
-            {/* Reset Button (nur zeigen wenn Filter aktiv) */}
-            {(filterSource !== 'ALL' || filterProject !== 'ALL') && (
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 px-3 py-2.5 rounded-lg text-sm text-gray-700">
+                <select 
+                    value={filterProject} 
+                    onChange={(e) => setFilterProject(e.target.value)}
+                    className="bg-transparent border-none focus:ring-0 p-0 w-[140px]"
+                >
+                    <option value="ALL">Alle Projekte</option>
+                    {uniqueProjects.map(proj => (
+                        <option key={proj} value={proj}>{proj}</option>
+                    ))}
+                </select>
+            </div>
+
+            {/* Reset */}
+            {(filterSource !== 'ALL' || filterProject !== 'ALL' || datePreset !== 'MONTH') && (
                 <button 
-                    onClick={() => { setFilterSource('ALL'); setFilterProject('ALL'); }}
+                    onClick={() => { setFilterSource('ALL'); setFilterProject('ALL'); applyDatePreset('MONTH'); }}
                     className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 ml-auto"
                 >
-                    <XCircle size={16} /> Filter löschen
+                    <XCircle size={16} /> Reset
                 </button>
             )}
         </div>
@@ -225,18 +363,18 @@ function App() {
         {/* KPIs */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card title="Stunden Heute" value={hoursToday.toFixed(2)} unit="h" color="text-indigo-600" />
-          <Card title="Summe (Gefiltert)" value={totalHoursFiltered.toFixed(2)} unit="h" color="text-gray-900" />
+          <Card title="Summe im Zeitraum" value={totalHoursFiltered.toFixed(2)} unit="h" color="text-gray-900" />
           <Card title="Einträge" value={filteredEntries.length.toString()} unit="#" color="text-gray-600" />
         </div>
 
-        {/* Chart Section */}
+        {/* Chart Section - ComposedChart für Total Label */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <h2 className="text-lg font-semibold mb-6 text-gray-800">Tägliche Arbeitszeit</h2>
           
           {aggregatedData.length > 0 ? (
               <div className="h-[400px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={aggregatedData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+                  <ComposedChart data={aggregatedData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                     <XAxis 
                         dataKey="displayDate" 
@@ -255,39 +393,58 @@ function App() {
                         cursor={{fill: '#f9fafb'}}
                     />
                     <Legend iconType="circle" />
-                    {/* Stacked Bars: stackId="a" sorgt für das Stapeln */}
+                    
+                    {/* Stacked Bars */}
                     <Bar name="Toggl" dataKey="togglHours" stackId="a" fill="#E57CD8" radius={[0, 0, 4, 4]} />
                     <Bar name="Tempo" dataKey="tempoHours" stackId="a" fill="#3B82F6" radius={[4, 4, 0, 0]} />
-                  </BarChart>
+
+                    {/* TRICK: Unsichtbare Linie für Total Labels */}
+                    <Line 
+                        type="monotone" 
+                        dataKey="totalHours" 
+                        stroke="none" 
+                        dot={false}
+                        activeDot={false}
+                        isAnimationActive={false}
+                    >
+                        <LabelList 
+                            dataKey="totalHours" 
+                            position="top" 
+                            offset={10} 
+                            formatter={(val: number) => val > 0 ? val.toFixed(1) : ''}
+                            style={{ fontSize: '12px', fill: '#6b7280', fontWeight: 600 }}
+                        />
+                    </Line>
+
+                  </ComposedChart>
               </ResponsiveContainer>
               </div>
           ) : (
               <div className="h-[300px] flex flex-col items-center justify-center text-gray-400 border-2 border-dashed border-gray-100 rounded-lg bg-gray-50/50">
-                  <FileUp size={48} className="mb-4 opacity-30"/>
                   <p>Keine Daten für diesen Filterzeitraum.</p>
               </div>
           )}
         </div>
 
-        {/* Table Section (Scrollbar!) */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col h-[500px]">
+        {/* Sortable Table Section */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col h-[600px]">
           <div className="p-6 border-b border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-800">Alle Einträge ({filteredEntries.length})</h3>
+            <h3 className="text-lg font-semibold text-gray-800">Detailliste</h3>
           </div>
           
           <div className="flex-1 overflow-auto">
               <table className="w-full text-left text-sm whitespace-nowrap">
                   <thead className="bg-gray-50 text-gray-500 sticky top-0 z-10 shadow-sm">
                       <tr>
-                          <th className="px-6 py-3 font-medium">Datum</th>
-                          <th className="px-6 py-3 font-medium">Quelle</th>
-                          <th className="px-6 py-3 font-medium">Projekt</th>
-                          <th className="px-6 py-3 font-medium">Beschreibung</th>
-                          <th className="px-6 py-3 font-medium text-right">Dauer</th>
+                          <SortableHeader label="Datum" sortKey="date" currentSort={sortConfig} onSort={handleSort} />
+                          <SortableHeader label="Quelle" sortKey="source" currentSort={sortConfig} onSort={handleSort} />
+                          <SortableHeader label="Projekt" sortKey="project" currentSort={sortConfig} onSort={handleSort} />
+                          <SortableHeader label="Beschreibung" sortKey="description" currentSort={sortConfig} onSort={handleSort} />
+                          <SortableHeader label="Dauer" sortKey="duration" currentSort={sortConfig} onSort={handleSort} align="right" />
                       </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                      {filteredEntries.map((entry) => (
+                      {sortedEntries.map((entry) => (
                           <tr key={entry.id} className="hover:bg-gray-50 transition-colors">
                               <td className="px-6 py-3 text-gray-600">
                                   {format(parseISO(entry.date), 'dd.MM.yyyy')}
@@ -310,8 +467,8 @@ function App() {
                       ))}
                   </tbody>
               </table>
-              {filteredEntries.length === 0 && (
-                <div className="p-10 text-center text-gray-400">Keine Einträge gefunden.</div>
+              {sortedEntries.length === 0 && (
+                <div className="p-10 text-center text-gray-400">Keine Einträge im gewählten Zeitraum.</div>
               )}
           </div>
         </div>
@@ -321,7 +478,8 @@ function App() {
   );
 }
 
-// Komponenten
+// --- SUB COMPONENTS ---
+
 function Card({ title, value, unit, color }: { title: string, value: string, unit: string, color: string }) {
     return (
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -331,6 +489,32 @@ function Card({ title, value, unit, color }: { title: string, value: string, uni
                 <span className="text-gray-400 font-medium">{unit}</span>
             </div>
         </div>
+    );
+}
+
+function SortableHeader({ label, sortKey, currentSort, onSort, align = 'left' }: {
+    label: string;
+    sortKey: SortKey;
+    currentSort: { key: SortKey; direction: SortDirection };
+    onSort: (key: SortKey) => void;
+    align?: 'left' | 'right';
+}) {
+    const isActive = currentSort.key === sortKey;
+    
+    return (
+        <th 
+            className={`px-6 py-3 font-medium cursor-pointer hover:text-gray-700 hover:bg-gray-100 transition user-select-none ${align === 'right' ? 'text-right' : ''}`}
+            onClick={() => onSort(sortKey)}
+        >
+            <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : ''}`}>
+                {label}
+                {isActive ? (
+                    currentSort.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                ) : (
+                    <ArrowUpDown size={14} className="opacity-30" />
+                )}
+            </div>
+        </th>
     );
 }
 
