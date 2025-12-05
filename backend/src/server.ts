@@ -1,3 +1,5 @@
+import 'dotenv/config';
+import { TogglService } from './services/toggl.service';
 import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
 import cors from '@fastify/cors';
@@ -72,6 +74,20 @@ app.post('/api/upload', async (req, reply) => {
   }
 
   return { message: 'Import successful', imported: count, errors: result.errors };
+});
+
+// Toggl Sync Route
+app.post<{ Querystring: { force: string } }>('/api/sync/toggl', async (req, reply) => {
+    const force = req.query.force === 'true';
+    const togglService = new TogglService(prisma);
+    
+    try {
+        const result = await togglService.syncTogglEntries(force);
+        return result;
+    } catch (error) {
+        req.log.error(error);
+        return reply.code(500).send({ error: (error as Error).message });
+    }
 });
 
 // Start Server

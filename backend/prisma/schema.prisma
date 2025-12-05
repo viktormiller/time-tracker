@@ -18,5 +18,8 @@ model TimeEntry {
   description String?  // Task description
   createdAt   DateTime @default(now())
 
+  // Kombinierter Unique Index
+  // Ein Eintrag ist eindeutig durch seine Quelle und seine externe ID.
+  @@unique([source, externalId]) 
   @@index([date])
 }
