@@ -45,24 +45,23 @@ function App() {
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  
+
   // Filter States
   const [filterSource, setFilterSource] = useState<string>('ALL');
   const [filterProject, setFilterProject] = useState<string>('ALL');
-  
+
   // Date Range State
   const [datePreset, setDatePreset] = useState<DatePreset>('MONTH');
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>(() => {
-    // Default: This Month
     return { start: startOfMonth(new Date()), end: endOfMonth(new Date()) };
   });
 
   // Sorting State
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({
     key: 'date',
-    direction: 'desc' // Neueste zuerst
+    direction: 'desc' 
   });
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // --- LOGIC: DATA FETCHING ---
@@ -88,11 +87,11 @@ function App() {
   const applyDatePreset = (preset: DatePreset) => {
     setDatePreset(preset);
     const now = new Date();
-    
-    // Wir setzen den start auf 00:00:00 und end auf 23:59:59 für korrekte Vergleiche
-    const opts = { locale: de, weekStartsOn: 1 as const }; // Woche startet Montag
 
-    let start = new Date(0); // 1970 (ALL)
+    // Woche startet Montag
+    const opts = { locale: de, weekStartsOn: 1 as const }; 
+
+    let start = new Date(0); 
     let end = new Date(2100, 0, 1); 
 
     switch (preset) {
@@ -100,19 +99,19 @@ function App() {
             start = startOfToday();
             end = endOfToday();
             break;
-        case 'WEEK': // This week
+        case 'WEEK': 
             start = startOfWeek(now, opts);
             end = endOfWeek(now, opts);
             break;
-        case 'MONTH': // This month
+        case 'MONTH': 
             start = startOfMonth(now);
             end = endOfMonth(now);
             break;
-        case 'QUARTER': // This quarter
+        case 'QUARTER': 
             start = startOfQuarter(now);
             end = endOfQuarter(now);
             break;
-        case 'YEAR': // This year
+        case 'YEAR': 
             start = startOfYear(now);
             end = endOfYear(now);
             break;
@@ -128,26 +127,21 @@ function App() {
             break;
         case 'ALL':
         default:
-            // Bleibt 1970 - 2100
             break;
     }
     setDateRange({ start, end });
   };
 
   // --- LOGIC: FILTERING & SORTING ---
-  
-  // 1. Filtern
   const filteredEntries = useMemo(() => {
     return entries.filter(entry => {
-      // Source & Project Filter
       const matchesSource = filterSource === 'ALL' || entry.source === filterSource;
       const matchesProject = filterProject === 'ALL' || entry.project === filterProject;
-      
-      // Date Range Filter
+
       const entryDate = parseISO(entry.date);
-      // isWithinInterval wirft Fehler bei ungültigen Daten, daher try/catch sicherheitshalber oder Checks
       let matchesDate = true;
       if (datePreset !== 'ALL') {
+          // Check if date is strictly within range
           matchesDate = isWithinInterval(entryDate, { start: dateRange.start, end: dateRange.end });
       }
 
@@ -155,19 +149,16 @@ function App() {
     });
   }, [entries, filterSource, filterProject, dateRange, datePreset]);
 
-  // 2. Sortieren
   const sortedEntries = useMemo(() => {
     const sorted = [...filteredEntries];
     sorted.sort((a, b) => {
         let valA: any = a[sortConfig.key];
         let valB: any = b[sortConfig.key];
 
-        // Spezialfall Datum (Strings vergleichen geht, aber TimeStamp ist sauberer)
         if (sortConfig.key === 'date') {
             valA = new Date(a.date).getTime();
             valB = new Date(b.date).getTime();
         }
-        // Spezialfall Strings (Case insensitive)
         if (typeof valA === 'string') valA = valA.toLowerCase();
         if (typeof valB === 'string') valB = valB.toLowerCase();
 
@@ -178,7 +169,6 @@ function App() {
     return sorted;
   }, [filteredEntries, sortConfig]);
 
-  // Helper für Tabellen-Header Klick
   const handleSort = (key: SortKey) => {
       setSortConfig(current => ({
           key,
@@ -195,7 +185,6 @@ function App() {
   const aggregatedData: DailyStats[] = useMemo(() => {
     const map = new Map<string, DailyStats>();
 
-    // Wir nutzen hier filteredEntries (Zeitraum beachten!)
     filteredEntries.forEach(entry => {
       const dateObj = parseISO(entry.date);
       const dateKey = format(dateObj, 'yyyy-MM-dd');
@@ -203,7 +192,8 @@ function App() {
       if (!map.has(dateKey)) {
         map.set(dateKey, {
           dateStr: dateKey,
-          displayDate: format(dateObj, 'dd.MM', { locale: de }),
+          // ÄNDERUNG: "EE" fügt Wochentag hinzu (Mo, Di...), "de" sorgt für deutsche Namen
+          displayDate: format(dateObj, 'EE dd.MM', { locale: de }),
           totalHours: 0,
           togglHours: 0,
           tempoHours: 0,
@@ -213,7 +203,7 @@ function App() {
 
       const dayStat = map.get(dateKey)!;
       dayStat.totalHours += entry.duration;
-      
+
       if (entry.source === 'TOGGL') {
         dayStat.togglHours += entry.duration;
       } else {
@@ -231,8 +221,7 @@ function App() {
   // KPIs
   const totalHoursFiltered = filteredEntries.reduce((acc, curr) => acc + curr.duration, 0);
   const today = new Date();
-  const hoursToday = entries // Hier nehmen wir ALLE Einträge von heute, unabhängig vom Datumsfilter oben? Oder auch gefiltert?
-                             // Toggl zeigt bei "This Month" trotzdem "Today" KPI an. Wir nehmen hier 'entries' aber filtern auf heute.
+  const hoursToday = entries 
     .filter(e => isSameDay(parseISO(e.date), today))
     .reduce((acc, curr) => acc + curr.duration, 0);
 
@@ -263,7 +252,7 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 p-6 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
-        
+
         {/* Header */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <div>
@@ -275,7 +264,7 @@ function App() {
                 }
             </p>
           </div>
-          
+
           <div className="flex flex-wrap items-center gap-3">
               <button onClick={fetchData} className="p-2.5 text-gray-600 hover:bg-gray-100 rounded-lg transition" title="Aktualisieren">
                   <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
@@ -295,9 +284,9 @@ function App() {
           </div>
         </header>
 
-        {/* Filter Bar (Controls) */}
+        {/* Filter Bar */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-wrap items-center gap-4">
-            
+
             {/* Date Preset Dropdown */}
             <div className="relative group">
                 <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 px-3 py-2.5 rounded-lg text-sm text-gray-700 min-w-[160px]">
@@ -349,7 +338,6 @@ function App() {
                 </select>
             </div>
 
-            {/* Reset */}
             {(filterSource !== 'ALL' || filterProject !== 'ALL' || datePreset !== 'MONTH') && (
                 <button 
                     onClick={() => { setFilterSource('ALL'); setFilterProject('ALL'); applyDatePreset('MONTH'); }}
@@ -367,10 +355,10 @@ function App() {
           <Card title="Einträge" value={filteredEntries.length.toString()} unit="#" color="text-gray-600" />
         </div>
 
-        {/* Chart Section - ComposedChart für Total Label */}
+        {/* Chart Section */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <h2 className="text-lg font-semibold mb-6 text-gray-800">Tägliche Arbeitszeit</h2>
-          
+
           {aggregatedData.length > 0 ? (
               <div className="h-[400px] w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -388,17 +376,18 @@ function App() {
                         axisLine={false}
                         tickFormatter={(val) => `${val}h`}
                     />
+
+                    {/* ÄNDERUNG: Formatter für Tooltip -> 2 Dezimalstellen */}
                     <Tooltip 
+                        formatter={(val: number) => [val.toFixed(2) + ' h']}
                         contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                         cursor={{fill: '#f9fafb'}}
                     />
                     <Legend iconType="circle" />
-                    
-                    {/* Stacked Bars */}
+
                     <Bar name="Toggl" dataKey="togglHours" stackId="a" fill="#E57CD8" radius={[0, 0, 4, 4]} />
                     <Bar name="Tempo" dataKey="tempoHours" stackId="a" fill="#3B82F6" radius={[4, 4, 0, 0]} />
 
-                    {/* TRICK: Unsichtbare Linie für Total Labels */}
                     <Line 
                         type="monotone" 
                         dataKey="totalHours" 
@@ -407,11 +396,12 @@ function App() {
                         activeDot={false}
                         isAnimationActive={false}
                     >
+                        {/* ÄNDERUNG: Formatter für Label -> 2 Dezimalstellen */}
                         <LabelList 
                             dataKey="totalHours" 
                             position="top" 
                             offset={10} 
-                            formatter={(val: number) => val > 0 ? val.toFixed(1) : ''}
+                            formatter={(val: number) => val > 0 ? val.toFixed(2) : ''}
                             style={{ fontSize: '12px', fill: '#6b7280', fontWeight: 600 }}
                         />
                     </Line>
@@ -431,7 +421,7 @@ function App() {
           <div className="p-6 border-b border-gray-100">
             <h3 className="text-lg font-semibold text-gray-800">Detailliste</h3>
           </div>
-          
+
           <div className="flex-1 overflow-auto">
               <table className="w-full text-left text-sm whitespace-nowrap">
                   <thead className="bg-gray-50 text-gray-500 sticky top-0 z-10 shadow-sm">
@@ -447,7 +437,8 @@ function App() {
                       {sortedEntries.map((entry) => (
                           <tr key={entry.id} className="hover:bg-gray-50 transition-colors">
                               <td className="px-6 py-3 text-gray-600">
-                                  {format(parseISO(entry.date), 'dd.MM.yyyy')}
+                                  {/* ÄNDERUNG: Wochentag auch in der Tabelle anzeigen */}
+                                  {format(parseISO(entry.date), 'EE dd.MM.yyyy', { locale: de })}
                               </td>
                               <td className="px-6 py-3">
                                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -500,7 +491,7 @@ function SortableHeader({ label, sortKey, currentSort, onSort, align = 'left' }:
     align?: 'left' | 'right';
 }) {
     const isActive = currentSort.key === sortKey;
-    
+
     return (
         <th 
             className={`px-6 py-3 font-medium cursor-pointer hover:text-gray-700 hover:bg-gray-100 transition user-select-none ${align === 'right' ? 'text-right' : ''}`}
