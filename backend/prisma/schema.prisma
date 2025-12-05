@@ -1,0 +1,22 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// Unified model for all time entries
+model TimeEntry {
+  id          String   @id @default(uuid())
+  source      String   // "TOGGL" | "TEMPO" | "API_..."
+  externalId  String?  // Optional ID from external system
+  date        DateTime // The actual date of work
+  duration    Float    // Duration in hours (decimal)
+  project     String?  // e.g. "forHim" or "WEKA-199"
+  description String?  // Task description
+  createdAt   DateTime @default(now())
+
+  @@index([date])
+}
