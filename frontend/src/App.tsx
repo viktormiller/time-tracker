@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { 
   Upload, Loader2, RefreshCw, Filter, XCircle, Calendar, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown, 
-  MousePointerClick, Trash2, Pencil, Save, X 
+  MousePointerClick, Trash2, Pencil, Save, X, CloudLightning
 } from 'lucide-react';
 import { 
   format, parseISO, isSameDay, startOfToday, endOfToday, 
@@ -45,7 +45,8 @@ function App() {
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  
+  const [syncing, setSyncing] = useState(false);
+
   // Filter States
   const [filterSource, setFilterSource] = useState<string>('ALL');
   const [filterProject, setFilterProject] = useState<string>('ALL');
@@ -202,6 +203,22 @@ function App() {
     finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
+  const syncToggl = async (force = false) => {
+      setSyncing(true);
+      try {
+          // Wir übergeben force=false, damit erst mal der Cache genutzt wird (spart API Calls)
+          // Wenn du es erzwingen willst, müsstest du force=true setzen.
+          const res = await axios.post(`${API_URL}/sync/toggl?force=${force}`);
+          alert(`Sync erfolgreich: ${res.data.message} (${res.data.count} Einträge verarbeitet)`);
+          fetchData();
+      } catch (error) {
+          console.error(error);
+          alert('Fehler beim Toggl Sync. Check Server Logs.');
+      } finally {
+          setSyncing(false);
+      }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 p-6 font-sans relative">
       
@@ -225,6 +242,17 @@ function App() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+              {/* Sync Button NEU */}
+              <button 
+                onClick={() => syncToggl(false)} 
+                disabled={syncing}
+                className="p-2.5 text-pink-600 bg-pink-50 hover:bg-pink-100 rounded-lg transition border border-pink-200 flex items-center gap-2"
+                title="Sync Toggl (Cache: 10min)"
+              >
+                  <CloudLightning size={20} className={syncing ? "animate-pulse" : ""} />
+                  <span className="text-sm font-medium hidden md:inline">Toggl Sync</span>
+              </button>
+
               <button onClick={fetchData} className="p-2.5 text-gray-600 hover:bg-gray-100 rounded-lg transition"><RefreshCw size={20} className={loading ? "animate-spin" : ""} /></button>
               <div className="h-8 w-px bg-gray-200 mx-2 hidden md:block"></div>
               <div className="relative">
