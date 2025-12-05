@@ -85,4 +85,41 @@ const start = async () => {
   }
 };
 
+// Eintrag löschen
+app.delete<{ Params: { id: string } }>('/api/entries/:id', async (req, reply) => {
+  const { id } = req.params;
+  try {
+    await prisma.timeEntry.delete({
+      where: { id },
+    });
+    return { success: true };
+  } catch (error) {
+    req.log.error(error);
+    return reply.code(500).send({ error: 'Could not delete entry' });
+  }
+});
+
+// Eintrag aktualisieren
+app.put<{ Params: { id: string }; Body: { date: string; duration: number; project: string; description: string; source: string } }>('/api/entries/:id', async (req, reply) => {
+  const { id } = req.params;
+  const { date, duration, project, description, source } = req.body;
+
+  try {
+    const updated = await prisma.timeEntry.update({
+      where: { id },
+      data: {
+        date: new Date(date), // String wieder in Date Objekt wandeln
+        duration: parseFloat(duration.toString()), // Sicherstellen, dass es eine Zahl ist
+        project,
+        description,
+        source
+      },
+    });
+    return updated;
+  } catch (error) {
+    req.log.error(error);
+    return reply.code(500).send({ error: 'Could not update entry' });
+  }
+});
+
 start();
