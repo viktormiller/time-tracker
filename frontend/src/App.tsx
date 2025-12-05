@@ -158,9 +158,11 @@ function App() {
   const tableEntries = useMemo(() => {
     let data = [...filteredEntries];
 
-    // Wenn ein Tag im Chart geklickt wurde, filtern wir die Tabelle zusätzlich
+    // FIX: Wir nutzen isSameDay statt String-Vergleich
+    // Das löst das Problem, dass Tempo/Toggl unterschiedliche Zeitstempel haben könnten
     if (selectedDay) {
-        data = data.filter(e => e.date.startsWith(selectedDay)); // ISO String Start comparison
+        const targetDate = parseISO(selectedDay);
+        data = data.filter(e => isSameDay(parseISO(e.date), targetDate));
     }
 
     // Sortieren
@@ -181,6 +183,11 @@ function App() {
     });
     return data;
   }, [filteredEntries, sortConfig, selectedDay]);
+
+  // Berechnung der Summe für die Footer-Zeile
+  const tableTotalHours = useMemo(() => {
+    return tableEntries.reduce((acc, curr) => acc + curr.duration, 0);
+  }, [tableEntries]);
 
   const handleSort = (key: SortKey) => {
       setSortConfig(current => ({
@@ -230,21 +237,18 @@ function App() {
     return Array.from(map.values()).sort((a, b) => a.dateStr.localeCompare(b.dateStr));
   }, [filteredEntries]);
 
-  // Chart Click Handler (Robustere Version)
+  // Chart Click Handler (Robust)
   const handleBarClick = (data: any) => {
     let clickedDateStr: string | null = null;
 
-    // Fall A: Klick direkt auf den Balken (Recharts übergibt das Datenobjekt direkt)
     if (data && data.dateStr) {
         clickedDateStr = data.dateStr;
     } 
-    // Fall B: Klick auf den Hintergrund/Wrapper (Recharts übergibt Event mit activePayload)
     else if (data && data.activePayload && data.activePayload.length > 0) {
         clickedDateStr = data.activePayload[0].payload.dateStr;
     }
 
     if (clickedDateStr) {
-        // Toggle: Wenn schon ausgewählt, dann abwählen, sonst auswählen
         setSelectedDay(current => current === clickedDateStr ? null : clickedDateStr!);
     }
   };
@@ -399,11 +403,10 @@ function App() {
           {aggregatedData.length > 0 ? (
               <div className="h-[400px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                  {/* onClick Handler hinzugefügt */}
                   <ComposedChart 
                     data={aggregatedData} 
                     margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
-                    onClick={handleBarClick} // Fallback für Klick auf leere Fläche in Spalte
+                    onClick={handleBarClick}
                   >
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                     <XAxis 
@@ -426,7 +429,6 @@ function App() {
                     />
                     <Legend iconType="circle" />
                     
-                    {/* WICHTIG: onClick auch hier direkt anfügen */}
                     <Bar 
                         name="Toggl" 
                         dataKey="togglHours" 
@@ -483,7 +485,6 @@ function App() {
                 }
             </h3>
             
-            {/* Indikator wenn ein Tag ausgewählt ist */}
             {selectedDay && (
                 <button 
                     onClick={() => setSelectedDay(null)}
@@ -528,6 +529,15 @@ function App() {
                           </tr>
                       ))}
                   </tbody>
+                  {/* FOOTER mit Summe */}
+                  {tableEntries.length > 0 && (
+                      <tfoot className="bg-gray-50 sticky bottom-0 z-10 shadow-inner">
+                          <tr>
+                              <td colSpan={4} className="px-6 py-4 text-right font-bold text-gray-700">Gesamt:</td>
+                              <td className="px-6 py-4 text-right font-bold text-indigo-600 text-base">{tableTotalHours.toFixed(2)} h</td>
+                          </tr>
+                      </tfoot>
+                  )}
               </table>
               {tableEntries.length === 0 && (
                 <div className="p-10 text-center text-gray-400">Keine Einträge {selectedDay ? 'an diesem Tag' : 'im gewählten Zeitraum'}.</div>
