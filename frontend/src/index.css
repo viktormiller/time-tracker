@@ -6,3 +6,7 @@ body {
   background-color: #f8f9fa; /* Hellgrauer Hintergrund wie bei modernen Tools */
   color: #1f2937;
 }
+
+*:focus {
+  outline: none;
+}

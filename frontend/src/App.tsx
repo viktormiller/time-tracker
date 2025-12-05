@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import axios from 'axios';
 import { 
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList 
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList, Cell 
 } from 'recharts';
 import { 
   Upload, Loader2, RefreshCw, Filter, XCircle, Calendar, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown, 
@@ -298,14 +298,34 @@ function App() {
                     <YAxis tick={{fill: '#9ca3af', fontSize: 12}} tickLine={false} axisLine={false} tickFormatter={(val) => `${val}h`} />
                     <Tooltip formatter={(val: number) => [val.toFixed(2) + ' h']} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} cursor={{fill: '#f9fafb'}} />
                     <Legend iconType="circle" />
-                    <Bar name="Toggl" dataKey="togglHours" stackId="a" fill="#E57CD8" radius={[0, 0, 4, 4]} cursor="pointer" onClick={handleBarClick} />
-                    <Bar name="Tempo" dataKey="tempoHours" stackId="a" fill="#3B82F6" radius={[4, 4, 0, 0]} cursor="pointer" onClick={handleBarClick} />
+                    
+                    {/* HIER IST DIE LOGIK FÜR DAS HIGHLIGHTING */}
+                    <Bar name="Toggl" dataKey="togglHours" stackId="a" fill="#E57CD8" radius={[0, 0, 4, 4]} cursor="pointer" onClick={handleBarClick}>
+                        {aggregatedData.map((entry, index) => (
+                            <Cell 
+                                key={`cell-toggl-${index}`} 
+                                fill="#E57CD8" 
+                                fillOpacity={selectedDay && entry.dateStr !== selectedDay ? 0.3 : 1} 
+                            />
+                        ))}
+                    </Bar>
+                    
+                    <Bar name="Tempo" dataKey="tempoHours" stackId="a" fill="#3B82F6" radius={[4, 4, 0, 0]} cursor="pointer" onClick={handleBarClick}>
+                        {aggregatedData.map((entry, index) => (
+                            <Cell 
+                                key={`cell-tempo-${index}`} 
+                                fill="#3B82F6" 
+                                fillOpacity={selectedDay && entry.dateStr !== selectedDay ? 0.3 : 1} 
+                            />
+                        ))}
+                    </Bar>
+
                     <Line type="monotone" dataKey="totalHours" stroke="none" dot={false} activeDot={false} isAnimationActive={false}>
                         <LabelList dataKey="totalHours" position="top" offset={10} formatter={(val: number) => val > 0 ? val.toFixed(2) : ''} style={{ fontSize: '12px', fill: '#6b7280', fontWeight: 600 }} />
                     </Line>
                   </ComposedChart>
               </ResponsiveContainer>
-              </div> // <--- FIXED: Hier fehlte das schließende div
+              </div>
           ) : (
               <div className="h-[300px] flex flex-col items-center justify-center text-gray-400 border-2 border-dashed border-gray-100 rounded-lg bg-gray-50/50"><p>Keine Daten für diesen Filterzeitraum.</p></div>
           )}
