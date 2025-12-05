@@ -4,7 +4,7 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList 
 } from 'recharts';
 import { 
-  Upload, Loader2, RefreshCw, Filter, XCircle, Calendar, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown 
+  Upload, Loader2, RefreshCw, Filter, XCircle, Calendar, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown, MousePointerClick 
 } from 'lucide-react';
 import { 
   format, parseISO, isSameDay, startOfToday, endOfToday, 
@@ -45,23 +45,26 @@ function App() {
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-
+  
   // Filter States
   const [filterSource, setFilterSource] = useState<string>('ALL');
   const [filterProject, setFilterProject] = useState<string>('ALL');
-
+  
   // Date Range State
   const [datePreset, setDatePreset] = useState<DatePreset>('MONTH');
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>(() => {
     return { start: startOfMonth(new Date()), end: endOfMonth(new Date()) };
   });
 
+  // Drill-Down State (Chart Click)
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+
   // Sorting State
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({
     key: 'date',
     direction: 'desc' 
   });
-
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // --- LOGIC: DATA FETCHING ---
@@ -83,12 +86,15 @@ function App() {
     fetchData();
   }, []);
 
+  // Reset selected day when main filters change
+  useEffect(() => {
+    setSelectedDay(null);
+  }, [filterSource, filterProject, dateRange]);
+
   // --- LOGIC: DATE PRESETS ---
   const applyDatePreset = (preset: DatePreset) => {
     setDatePreset(preset);
     const now = new Date();
-
-    // Woche startet Montag
     const opts = { locale: de, weekStartsOn: 1 as const }; 
 
     let start = new Date(0); 
@@ -132,16 +138,15 @@ function App() {
     setDateRange({ start, end });
   };
 
-  // --- LOGIC: FILTERING & SORTING ---
+  // --- LOGIC: FILTERING ---
   const filteredEntries = useMemo(() => {
     return entries.filter(entry => {
       const matchesSource = filterSource === 'ALL' || entry.source === filterSource;
       const matchesProject = filterProject === 'ALL' || entry.project === filterProject;
-
+      
       const entryDate = parseISO(entry.date);
       let matchesDate = true;
       if (datePreset !== 'ALL') {
-          // Check if date is strictly within range
           matchesDate = isWithinInterval(entryDate, { start: dateRange.start, end: dateRange.end });
       }
 
@@ -149,9 +154,17 @@ function App() {
     });
   }, [entries, filterSource, filterProject, dateRange, datePreset]);
 
-  const sortedEntries = useMemo(() => {
-    const sorted = [...filteredEntries];
-    sorted.sort((a, b) => {
+  // --- LOGIC: TABLE DATA (Global Filter + Click Selection) ---
+  const tableEntries = useMemo(() => {
+    let data = [...filteredEntries];
+
+    // Wenn ein Tag im Chart geklickt wurde, filtern wir die Tabelle zusätzlich
+    if (selectedDay) {
+        data = data.filter(e => e.date.startsWith(selectedDay)); // ISO String Start comparison
+    }
+
+    // Sortieren
+    data.sort((a, b) => {
         let valA: any = a[sortConfig.key];
         let valB: any = b[sortConfig.key];
 
@@ -166,8 +179,8 @@ function App() {
         if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
         return 0;
     });
-    return sorted;
-  }, [filteredEntries, sortConfig]);
+    return data;
+  }, [filteredEntries, sortConfig, selectedDay]);
 
   const handleSort = (key: SortKey) => {
       setSortConfig(current => ({
@@ -192,7 +205,6 @@ function App() {
       if (!map.has(dateKey)) {
         map.set(dateKey, {
           dateStr: dateKey,
-          // ÄNDERUNG: "EE" fügt Wochentag hinzu (Mo, Di...), "de" sorgt für deutsche Namen
           displayDate: format(dateObj, 'EE dd.MM', { locale: de }),
           totalHours: 0,
           togglHours: 0,
@@ -203,7 +215,7 @@ function App() {
 
       const dayStat = map.get(dateKey)!;
       dayStat.totalHours += entry.duration;
-
+      
       if (entry.source === 'TOGGL') {
         dayStat.togglHours += entry.duration;
       } else {
@@ -217,6 +229,25 @@ function App() {
 
     return Array.from(map.values()).sort((a, b) => a.dateStr.localeCompare(b.dateStr));
   }, [filteredEntries]);
+
+  // Chart Click Handler (Robustere Version)
+  const handleBarClick = (data: any) => {
+    let clickedDateStr: string | null = null;
+
+    // Fall A: Klick direkt auf den Balken (Recharts übergibt das Datenobjekt direkt)
+    if (data && data.dateStr) {
+        clickedDateStr = data.dateStr;
+    } 
+    // Fall B: Klick auf den Hintergrund/Wrapper (Recharts übergibt Event mit activePayload)
+    else if (data && data.activePayload && data.activePayload.length > 0) {
+        clickedDateStr = data.activePayload[0].payload.dateStr;
+    }
+
+    if (clickedDateStr) {
+        // Toggle: Wenn schon ausgewählt, dann abwählen, sonst auswählen
+        setSelectedDay(current => current === clickedDateStr ? null : clickedDateStr!);
+    }
+  };
 
   // KPIs
   const totalHoursFiltered = filteredEntries.reduce((acc, curr) => acc + curr.duration, 0);
@@ -252,7 +283,7 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 p-6 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
-
+        
         {/* Header */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <div>
@@ -264,7 +295,7 @@ function App() {
                 }
             </p>
           </div>
-
+          
           <div className="flex flex-wrap items-center gap-3">
               <button onClick={fetchData} className="p-2.5 text-gray-600 hover:bg-gray-100 rounded-lg transition" title="Aktualisieren">
                   <RefreshCw size={20} className={loading ? "animate-spin" : ""} />
@@ -286,7 +317,7 @@ function App() {
 
         {/* Filter Bar */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-wrap items-center gap-4">
-
+            
             {/* Date Preset Dropdown */}
             <div className="relative group">
                 <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 px-3 py-2.5 rounded-lg text-sm text-gray-700 min-w-[160px]">
@@ -356,13 +387,24 @@ function App() {
         </div>
 
         {/* Chart Section */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-          <h2 className="text-lg font-semibold mb-6 text-gray-800">Tägliche Arbeitszeit</h2>
-
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 relative">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-lg font-semibold text-gray-800">Tägliche Arbeitszeit</h2>
+            <div className="text-xs text-gray-400 flex items-center gap-1">
+                <MousePointerClick size={14} />
+                <span>Balken klicken für Details</span>
+            </div>
+          </div>
+          
           {aggregatedData.length > 0 ? (
               <div className="h-[400px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={aggregatedData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+                  {/* onClick Handler hinzugefügt */}
+                  <ComposedChart 
+                    data={aggregatedData} 
+                    margin={{ top: 20, right: 30, left: 0, bottom: 5 }}
+                    onClick={handleBarClick} // Fallback für Klick auf leere Fläche in Spalte
+                  >
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                     <XAxis 
                         dataKey="displayDate" 
@@ -376,17 +418,33 @@ function App() {
                         axisLine={false}
                         tickFormatter={(val) => `${val}h`}
                     />
-
-                    {/* ÄNDERUNG: Formatter für Tooltip -> 2 Dezimalstellen */}
+                    
                     <Tooltip 
                         formatter={(val: number) => [val.toFixed(2) + ' h']}
                         contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                         cursor={{fill: '#f9fafb'}}
                     />
                     <Legend iconType="circle" />
-
-                    <Bar name="Toggl" dataKey="togglHours" stackId="a" fill="#E57CD8" radius={[0, 0, 4, 4]} />
-                    <Bar name="Tempo" dataKey="tempoHours" stackId="a" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                    
+                    {/* WICHTIG: onClick auch hier direkt anfügen */}
+                    <Bar 
+                        name="Toggl" 
+                        dataKey="togglHours" 
+                        stackId="a" 
+                        fill="#E57CD8" 
+                        radius={[0, 0, 4, 4]} 
+                        cursor="pointer"
+                        onClick={handleBarClick} 
+                    />
+                    <Bar 
+                        name="Tempo" 
+                        dataKey="tempoHours" 
+                        stackId="a" 
+                        fill="#3B82F6" 
+                        radius={[4, 4, 0, 0]} 
+                        cursor="pointer"
+                        onClick={handleBarClick} 
+                    />
 
                     <Line 
                         type="monotone" 
@@ -396,7 +454,6 @@ function App() {
                         activeDot={false}
                         isAnimationActive={false}
                     >
-                        {/* ÄNDERUNG: Formatter für Label -> 2 Dezimalstellen */}
                         <LabelList 
                             dataKey="totalHours" 
                             position="top" 
@@ -418,10 +475,25 @@ function App() {
 
         {/* Sortable Table Section */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col h-[600px]">
-          <div className="p-6 border-b border-gray-100">
-            <h3 className="text-lg font-semibold text-gray-800">Detailliste</h3>
+          <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+            <h3 className="text-lg font-semibold text-gray-800">
+                {selectedDay 
+                    ? `Details für ${format(parseISO(selectedDay), 'dd.MM.yyyy')}` 
+                    : 'Alle Einträge im Zeitraum'
+                }
+            </h3>
+            
+            {/* Indikator wenn ein Tag ausgewählt ist */}
+            {selectedDay && (
+                <button 
+                    onClick={() => setSelectedDay(null)}
+                    className="flex items-center gap-1 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-sm font-medium hover:bg-indigo-100 transition"
+                >
+                    <XCircle size={14} /> Auswahl aufheben
+                </button>
+            )}
           </div>
-
+          
           <div className="flex-1 overflow-auto">
               <table className="w-full text-left text-sm whitespace-nowrap">
                   <thead className="bg-gray-50 text-gray-500 sticky top-0 z-10 shadow-sm">
@@ -434,10 +506,9 @@ function App() {
                       </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                      {sortedEntries.map((entry) => (
+                      {tableEntries.map((entry) => (
                           <tr key={entry.id} className="hover:bg-gray-50 transition-colors">
                               <td className="px-6 py-3 text-gray-600">
-                                  {/* ÄNDERUNG: Wochentag auch in der Tabelle anzeigen */}
                                   {format(parseISO(entry.date), 'EE dd.MM.yyyy', { locale: de })}
                               </td>
                               <td className="px-6 py-3">
@@ -458,8 +529,8 @@ function App() {
                       ))}
                   </tbody>
               </table>
-              {sortedEntries.length === 0 && (
-                <div className="p-10 text-center text-gray-400">Keine Einträge im gewählten Zeitraum.</div>
+              {tableEntries.length === 0 && (
+                <div className="p-10 text-center text-gray-400">Keine Einträge {selectedDay ? 'an diesem Tag' : 'im gewählten Zeitraum'}.</div>
               )}
           </div>
         </div>
@@ -491,7 +562,7 @@ function SortableHeader({ label, sortKey, currentSort, onSort, align = 'left' }:
     align?: 'left' | 'right';
 }) {
     const isActive = currentSort.key === sortKey;
-
+    
     return (
         <th 
             className={`px-6 py-3 font-medium cursor-pointer hover:text-gray-700 hover:bg-gray-100 transition user-select-none ${align === 'right' ? 'text-right' : ''}`}
