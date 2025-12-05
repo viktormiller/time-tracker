@@ -68,7 +68,6 @@ export class TempoCsvAdapter implements ImportAdapter {
                         duration: hours,
                         project: key,    // Use Key as Project for now
                         description: issue,
-                        source: 'TEMPO'
                     });
                 }
             }

@@ -11,7 +11,7 @@ export class TogglCsvAdapter implements ImportAdapter {
         columns: true,
         skip_empty_lines: true,
         trim: true,
-      });
+      }) as Record<string, string>[];
 
       for (const row of records) {
         // Expected columns based on "Detailed Report":
