@@ -77,12 +77,15 @@ app.post('/api/upload', async (req, reply) => {
 });
 
 // Toggl Sync Route
-app.post<{ Querystring: { force: string } }>('/api/sync/toggl', async (req, reply) => {
+app.post<{ Querystring: { force: string }, Body: { startDate?: string, endDate?: string } }>('/api/sync/toggl', async (req, reply) => {
     const force = req.query.force === 'true';
+    // Body parsen für Custom Dates
+    const { startDate, endDate } = req.body || {};
+
     const togglService = new TogglService(prisma);
-    
+
     try {
-        const result = await togglService.syncTogglEntries(force);
+        const result = await togglService.syncTogglEntries(force, startDate, endDate);
         return result;
     } catch (error) {
         req.log.error(error);

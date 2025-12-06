@@ -9,25 +9,31 @@ const CACHE_DURATION_MS = 10 * 60 * 1000; // 10 Minuten Cache
 export class TogglService {
   constructor(private prisma: PrismaClient) {}
 
-  async syncTogglEntries(forceRefresh = false) {
+  // Neue Signatur: akzeptiert optionale Start/End-Strings (YYYY-MM-DD)
+  async syncTogglEntries(forceRefresh = false, customStart?: string, customEnd?: string) {
     const token = process.env.TOGGL_API_TOKEN;
     if (!token) throw new Error('TOGGL_API_TOKEN is missing in .env');
 
     let entries = [];
     let usedCache = false;
 
+
+    // Cache-Logik nur nutzen, wenn KEINE speziellen Daten angefordert wurden.
+    // Wenn der User einen Zeitraum vorgibt, wollen wir immer frisch laden.
+    const isCustomSync = !!customStart && !!customEnd;
+
     // 1. Prüfen ob Cache existiert und gültig ist
     const cacheExists = await this.fileExists(CACHE_FILE);
 
-    if (cacheExists && !forceRefresh) {
+    if (cacheExists && !forceRefresh && !isCustomSync) {
         const stats = await fs.stat(CACHE_FILE);
         const age = Date.now() - stats.mtimeMs;
 
         if (age < CACHE_DURATION_MS) {
-            console.log('[Toggl] Using cached data (no API call)');
-            const fileContent = await fs.readFile(CACHE_FILE, 'utf-8');
-            entries = JSON.parse(fileContent);
-            usedCache = true;
+             console.log('[Toggl] Using cached data');
+             const fileContent = await fs.readFile(CACHE_FILE, 'utf-8');
+             entries = JSON.parse(fileContent);
+             usedCache = true;
         }
     }
 
@@ -35,22 +41,31 @@ export class TogglService {
     if (!usedCache) {
         console.log('[Toggl] Fetching fresh data from API...');
 
-        // Zeitraum: Letzte 3 Monate bis heute (um sicher zu gehen)
-        const endDate = new Date();
-        endDate.setDate(endDate.getDate() + 1); // +1 Tag
+        // Standard: Letzte 3 Monate bis Morgen
+        let startDateStr = '';
+        let endDateStr = '';
 
-        const startDate = new Date();
-        startDate.setMonth(startDate.getMonth() - 3);
+        if (isCustomSync) {
+            startDateStr = customStart!;
+            endDateStr = customEnd!;
+        } else {
+            const endDate = new Date();
+            endDate.setDate(endDate.getDate() + 1);
+            const startDate = new Date();
+            startDate.setMonth(startDate.getMonth() - 3);
+
+            startDateStr = startDate.toISOString().split('T')[0];
+            endDateStr = endDate.toISOString().split('T')[0];
+        }
 
         const params = {
-            start_date: startDate.toISOString().split('T')[0], // YYYY-MM-DD
-            end_date: endDate.toISOString().split('T')[0]
+            start_date: startDateStr,
+            end_date: endDateStr
         };
 
         const response = await axios.get('https://api.track.toggl.com/api/v9/me/time_entries', {
             params,
             headers: {
-                // Basic Auth: token:api_token base64 encoded
                 Authorization: `Basic ${Buffer.from(`${token}:api_token`).toString('base64')}`,
                 'Content-Type': 'application/json'
             }
@@ -58,8 +73,11 @@ export class TogglService {
 
         entries = response.data;
 
-        // Cache schreiben
-        await fs.writeFile(CACHE_FILE, JSON.stringify(entries, null, 2));
+
+        // Cache nur aktualisieren, wenn es der Standard-Sync war
+        if (!isCustomSync) {
+            await fs.writeFile(CACHE_FILE, JSON.stringify(entries, null, 2));
+        }
     }
 
     // 3. Daten in DB speichern (Upsert)
