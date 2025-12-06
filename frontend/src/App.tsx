@@ -105,8 +105,12 @@ function App() {
   const syncToggl = async (startDate?: string, endDate?: string) => {
       setSyncing(true); setShowSyncModal(false);
       try {
-          const isCustom = !!startDate;
+          const isCustom = !!startDate && startDate !== '';
+
           const payload = isCustom ? { startDate, endDate } : {};
+
+          console.log("Sende an Backend:", payload); // Debug fürs Browser Terminal (F12)
+
           const res = await axios.post(`${API_URL}/sync/toggl?force=${isCustom}`, payload);
           alert(`Sync erfolgreich: ${res.data.message} (${res.data.count} Einträge)`);
           fetchData();

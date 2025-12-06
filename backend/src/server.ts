@@ -83,6 +83,8 @@ app.post<{ Querystring: { force: string }, Body: { startDate?: string, endDate?:
     // Body parsen für Custom Dates
     const { startDate, endDate } = req.body || {};
 
+    console.log('[API Route] /sync/toggl called with body:', req.body);
+
     const togglService = new TogglService(prisma);
 
     try {
