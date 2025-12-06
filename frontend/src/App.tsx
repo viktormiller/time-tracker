@@ -4,16 +4,20 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList, Cell 
 } from 'recharts';
 import { 
-  Upload, Loader2, RefreshCw, Filter, XCircle, Calendar, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown, 
-  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning 
+  Upload, Loader2, RefreshCw, Filter, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown, 
+  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon 
 } from 'lucide-react';
 import { 
   format, parseISO, isSameDay, startOfToday, endOfToday, 
   startOfWeek, endOfWeek, startOfMonth, endOfMonth, 
   startOfQuarter, endOfQuarter, startOfYear, endOfYear, 
-  subWeeks, subMonths, isWithinInterval, addDays, addWeeks, addMonths, addQuarters, addYears, subDays 
+  subWeeks, subMonths, isWithinInterval, addDays, addWeeks, addMonths, addQuarters, addYears, eachDayOfInterval, subDays 
 } from 'date-fns';
 import { de } from 'date-fns/locale';
+
+// FIX: 'type DateRange' verhindert den Absturz, da es nur eine Typ-Definition ist
+import { DayPicker, type DateRange } from 'react-day-picker';
+import 'react-day-picker/dist/style.css'; // Styles direkt hier importieren
 
 // --- TYPEN ---
 interface TimeEntry {
@@ -36,10 +40,25 @@ interface DailyStats {
 
 type SortKey = 'date' | 'source' | 'project' | 'description' | 'duration';
 type SortDirection = 'asc' | 'desc';
-// NEU: 'CUSTOM' hinzugefügt
-type DatePreset = 'TODAY' | 'WEEK' | 'MONTH' | 'QUARTER' | 'YEAR' | 'LAST_WEEK' | 'LAST_MONTH' | 'ALL' | 'CUSTOM';
+type DatePreset = 'TODAY' | 'WEEK' | 'MONTH' | 'QUARTER' | 'YEAR' | 'LAST_WEEK' | 'LAST_MONTH' | 'CUSTOM' | 'ALL';
 
 const API_URL = '/api';
+
+// Hilfsfunktion für Presets
+const getPresetRange = (preset: DatePreset): { start: Date, end: Date } | null => {
+    const now = new Date();
+    const opts = { locale: de, weekStartsOn: 1 as const };
+    switch (preset) {
+        case 'TODAY': return { start: startOfToday(), end: endOfToday() };
+        case 'WEEK': return { start: startOfWeek(now, opts), end: endOfWeek(now, opts) };
+        case 'MONTH': return { start: startOfMonth(now), end: endOfMonth(now) };
+        case 'QUARTER': return { start: startOfQuarter(now), end: endOfQuarter(now) };
+        case 'YEAR': return { start: startOfYear(now), end: endOfYear(now) };
+        case 'LAST_WEEK': const lw = subWeeks(now, 1); return { start: startOfWeek(lw, opts), end: endOfWeek(lw, opts) };
+        case 'LAST_MONTH': const lm = subMonths(now, 1); return { start: startOfMonth(lm), end: endOfMonth(lm) };
+        default: return null;
+    }
+};
 
 function App() {
   // --- STATE ---
@@ -47,27 +66,20 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [syncing, setSyncing] = useState(false);
-
-  // Filter States
+  
+  // Filter & UI States
   const [filterSource, setFilterSource] = useState<string>('ALL');
   const [filterProject, setFilterProject] = useState<string>('ALL');
-  const [datePreset, setDatePreset] = useState<DatePreset>('MONTH');
-
-  // Date Range State
-  const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>(() => {
-    return { start: startOfMonth(new Date()), end: endOfMonth(new Date()) };
-  });
-
-  // UI States
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({
-    key: 'date',
-    direction: 'desc' 
-  });
-
-  // MODAL STATES
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'date', direction: 'desc' });
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
   const [showSyncModal, setShowSyncModal] = useState(false);
+
+  // DATE STATE
+  const [datePreset, setDatePreset] = useState<DatePreset>('MONTH');
+  const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>(() => {
+     return getPresetRange('MONTH')!;
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -77,131 +89,66 @@ function App() {
     try {
       const res = await axios.get<TimeEntry[]>(`${API_URL}/stats`);
       if (Array.isArray(res.data)) setEntries(res.data);
-    } catch (error) {
-      console.error("Fehler beim Laden:", error);
-    } finally {
-      setLoading(false);
-    }
+    } catch (error) { console.error("Fehler beim Laden:", error); } 
+    finally { setLoading(false); }
   };
 
   const deleteEntry = async (id: string) => {
     if (!confirm('Möchtest du diesen Eintrag wirklich löschen?')) return;
-    try {
-        await axios.delete(`${API_URL}/entries/${id}`);
-        fetchData(); 
-    } catch (e) { alert('Fehler beim Löschen'); }
+    try { await axios.delete(`${API_URL}/entries/${id}`); fetchData(); } catch (e) { alert('Fehler beim Löschen'); }
   };
 
   const updateEntry = async (entry: TimeEntry) => {
-      try {
-          await axios.put(`${API_URL}/entries/${entry.id}`, entry);
-          setEditingEntry(null); 
-          fetchData(); 
-      } catch (e) { alert('Fehler beim Speichern'); }
+      try { await axios.put(`${API_URL}/entries/${entry.id}`, entry); setEditingEntry(null); fetchData(); } catch (e) { alert('Fehler beim Speichern'); }
   };
 
   const syncToggl = async (startDate?: string, endDate?: string) => {
-      setSyncing(true);
-      setShowSyncModal(false);
+      setSyncing(true); setShowSyncModal(false);
       try {
-          // Force ist true, wenn Daten manuell gewählt wurden
           const isCustom = !!startDate;
           const payload = isCustom ? { startDate, endDate } : {};
-
           const res = await axios.post(`${API_URL}/sync/toggl?force=${isCustom}`, payload);
           alert(`Sync erfolgreich: ${res.data.message} (${res.data.count} Einträge)`);
           fetchData();
       } catch (error) {
-          console.error(error);
-          if (axios.isAxiosError(error) && error.response?.data?.error) {
-              alert(`Fehler beim Toggl Sync: ${error.response.data.error}`);
-          } else {
-              alert('Unbekannter Fehler beim Toggl Sync.');
-          }
-      } finally {
-          setSyncing(false);
-      }
+          if (axios.isAxiosError(error) && error.response?.data?.error) alert(`Fehler beim Toggl Sync: ${error.response.data.error}`);
+          else alert('Unbekannter Fehler beim Toggl Sync.');
+      } finally { setSyncing(false); }
   };
 
   useEffect(() => { fetchData(); }, []);
   useEffect(() => { setSelectedDay(null); }, [filterSource, filterProject, dateRange]);
 
   // --- LOGIC: DATE NAVIGATION ---
-  const opts = { locale: de, weekStartsOn: 1 as const };
-
-  const applyDatePreset = (preset: DatePreset) => {
+  const handlePresetChange = (preset: DatePreset) => {
     setDatePreset(preset);
-    const now = new Date();
-    let start = new Date(0); let end = new Date(2100, 0, 1); 
-
-    switch (preset) {
-        case 'TODAY': start = startOfToday(); end = endOfToday(); break;
-        case 'WEEK': start = startOfWeek(now, opts); end = endOfWeek(now, opts); break;
-        case 'MONTH': start = startOfMonth(now); end = endOfMonth(now); break;
-        case 'QUARTER': start = startOfQuarter(now); end = endOfQuarter(now); break;
-        case 'YEAR': start = startOfYear(now); end = endOfYear(now); break;
-        case 'LAST_WEEK': const lw = subWeeks(now, 1); start = startOfWeek(lw, opts); end = endOfWeek(lw, opts); break;
-        case 'LAST_MONTH': const lm = subMonths(now, 1); start = startOfMonth(lm); end = endOfMonth(lm); break;
-        case 'CUSTOM': 
-            // Standardmäßig die letzten 7 Tage, wenn auf Custom gewechselt wird
-            end = endOfToday();
-            start = subDays(end, 7);
-            break;
+    if (preset === 'ALL') {
+        // Bei ALL nehmen wir einfach min/max von den Einträgen oder 1970-2100
+        setDateRange({ start: new Date(0), end: new Date(2100, 0, 1) });
+    } else if (preset === 'CUSTOM') {
+        // Keine Änderung an Range, User muss wählen
+    } else {
+        const range = getPresetRange(preset);
+        if (range) setDateRange(range);
     }
-    setDateRange({ start, end });
   };
 
-  // Vorwärts / Rückwärts Button Logik
   const navigateDateRange = (direction: 'prev' | 'next') => {
-      if (datePreset === 'ALL' || datePreset === 'CUSTOM') return; // Bei Custom macht simple Navigation oft keinen Sinn oder ist komplex
-
+      if (datePreset === 'ALL' || datePreset === 'CUSTOM') return;
       const modifier = direction === 'next' ? 1 : -1;
       let { start, end } = dateRange;
 
       switch (datePreset) {
-          case 'TODAY':
-              start = addDays(start, modifier);
-              end = addDays(end, modifier);
-              break;
-          case 'WEEK':
-          case 'LAST_WEEK': // Verhält sich wie Woche
-              start = addWeeks(start, modifier);
-              end = addWeeks(end, modifier);
-              break;
-          case 'MONTH':
-          case 'LAST_MONTH':
-              start = addMonths(start, modifier);
-              end = endOfMonth(start); // Ende neu berechnen, da Monate unterschiedliche Längen haben
-              break;
-          case 'QUARTER':
-              start = addQuarters(start, modifier);
-              end = endOfQuarter(start);
-              break;
-          case 'YEAR':
-              start = addYears(start, modifier);
-              end = endOfYear(start);
-              break;
+          case 'TODAY': start = addDays(start, modifier); end = addDays(end, modifier); break;
+          case 'WEEK': case 'LAST_WEEK': start = addWeeks(start, modifier); end = addWeeks(end, modifier); break;
+          case 'MONTH': case 'LAST_MONTH': start = addMonths(start, modifier); end = endOfMonth(start); break;
+          case 'QUARTER': start = addQuarters(start, modifier); end = endOfQuarter(start); break;
+          case 'YEAR': start = addYears(start, modifier); end = endOfYear(start); break;
       }
       setDateRange({ start, end });
   };
 
-  // Custom Date Change Handler
-  const handleCustomDateChange = (type: 'start' | 'end', value: string) => {
-      const newDate = value ? parseISO(value) : new Date();
-      setDateRange(prev => ({
-          ...prev,
-          [type]: type === 'start' ? newDate : endOfToday() // Fallback logic vereinfacht
-      }));
-      // Wenn End-Datum, dann dieses auch setzen.
-      if(type === 'end') {
-        // Da Input type="date" immer 00:00 liefert, wollen wir beim Enddatum eigentlich 23:59:59
-        // Aber für den Filter reicht der Tagesvergleich.
-         setDateRange(prev => ({ ...prev, end: newDate }));
-      }
-  };
-
-
-  // --- LOGIC: FILTERING & SORTING ---
+  // --- LOGIC: FILTERING ---
   const filteredEntries = useMemo(() => {
     return entries.filter(entry => {
       const matchesSource = filterSource === 'ALL' || entry.source === filterSource;
@@ -213,6 +160,55 @@ function App() {
     });
   }, [entries, filterSource, filterProject, dateRange, datePreset]);
 
+  // --- CHART LOGIC (MIT LÜCKEN FÜLLEN) ---
+  const aggregatedData: DailyStats[] = useMemo(() => {
+    const map = new Map<string, DailyStats>();
+    
+    // 1. Alle Tage im Intervall generieren (nur wenn nicht ALL, sonst explodiert der Browser)
+    if (datePreset !== 'ALL') {
+        try {
+            const daysInterval = eachDayOfInterval({ start: dateRange.start, end: dateRange.end });
+            daysInterval.forEach(day => {
+                const dateKey = format(day, 'yyyy-MM-dd');
+                map.set(dateKey, {
+                    dateStr: dateKey,
+                    displayDate: format(day, 'EE dd.MM', { locale: de }),
+                    totalHours: 0,
+                    togglHours: 0,
+                    tempoHours: 0,
+                    projects: []
+                });
+            });
+        } catch(e) {
+            // Fallback falls Interval ungültig
+            console.warn("Invalid interval for chart generation", e);
+        }
+    }
+
+    // 2. Echte Daten einfüllen
+    filteredEntries.forEach(entry => {
+      const dateObj = parseISO(entry.date);
+      const dateKey = format(dateObj, 'yyyy-MM-dd');
+      
+      // Falls "ALL" gewählt ist oder Tag außerhalb Range
+      if (!map.has(dateKey)) {
+          map.set(dateKey, {
+              dateStr: dateKey,
+              displayDate: format(dateObj, 'EE dd.MM', { locale: de }),
+              totalHours: 0, togglHours: 0, tempoHours: 0, projects: []
+          });
+      }
+
+      const dayStat = map.get(dateKey)!;
+      dayStat.totalHours += entry.duration;
+      entry.source === 'TOGGL' ? dayStat.togglHours += entry.duration : dayStat.tempoHours += entry.duration;
+      if (entry.project && !dayStat.projects.includes(entry.project)) dayStat.projects.push(entry.project);
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.dateStr.localeCompare(b.dateStr));
+  }, [filteredEntries, dateRange, datePreset]);
+
+  // Table Data
   const tableEntries = useMemo(() => {
     let data = [...filteredEntries];
     if (selectedDay) {
@@ -235,27 +231,8 @@ function App() {
   const tableTotalHours = useMemo(() => tableEntries.reduce((acc, curr) => acc + curr.duration, 0), [tableEntries]);
   const uniqueProjects = useMemo(() => Array.from(new Set(entries.map(e => e.project).filter(Boolean))).sort(), [entries]);
 
-  const handleSort = (key: SortKey) => {
-      setSortConfig(current => ({ key, direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc' }));
-  };
-
-  // --- CHART LOGIC ---
-  const aggregatedData: DailyStats[] = useMemo(() => {
-    const map = new Map<string, DailyStats>();
-    filteredEntries.forEach(entry => {
-      const dateObj = parseISO(entry.date);
-      const dateKey = format(dateObj, 'yyyy-MM-dd');
-      if (!map.has(dateKey)) {
-        map.set(dateKey, { dateStr: dateKey, displayDate: format(dateObj, 'EE dd.MM', { locale: de }), totalHours: 0, togglHours: 0, tempoHours: 0, projects: [] });
-      }
-      const dayStat = map.get(dateKey)!;
-      dayStat.totalHours += entry.duration;
-      entry.source === 'TOGGL' ? dayStat.togglHours += entry.duration : dayStat.tempoHours += entry.duration;
-      if (entry.project && !dayStat.projects.includes(entry.project)) dayStat.projects.push(entry.project);
-    });
-    return Array.from(map.values()).sort((a, b) => a.dateStr.localeCompare(b.dateStr));
-  }, [filteredEntries]);
-
+  const handleSort = (key: SortKey) => setSortConfig(current => ({ key, direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc' }));
+  
   const handleBarClick = (data: any) => {
     let clickedDateStr: string | null = null;
     if (data && data.dateStr) clickedDateStr = data.dateStr;
@@ -263,7 +240,6 @@ function App() {
     if (clickedDateStr) setSelectedDay(current => current === clickedDateStr ? null : clickedDateStr!);
   };
 
-  // --- KPIs & UPLOAD ---
   const totalHoursFiltered = filteredEntries.reduce((acc, curr) => acc + curr.duration, 0);
   const hoursToday = entries.filter(e => isSameDay(parseISO(e.date), new Date())).reduce((acc, curr) => acc + curr.duration, 0);
 
@@ -273,57 +249,32 @@ function App() {
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
-    try {
-      await axios.post(`${API_URL}/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-      alert('Import erfolgreich!');
-      fetchData();
-    } catch (error) { console.error(error); alert('Fehler beim Upload.'); } 
-    finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
+    try { await axios.post(`${API_URL}/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }); alert('Import erfolgreich!'); fetchData(); } 
+    catch (error) { alert('Fehler beim Upload.'); } finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 p-6 font-sans relative">
-
       {/* MODALS */}
       {editingEntry && <EditModal entry={editingEntry} onClose={() => setEditingEntry(null)} onSave={updateEntry} />}
       {showSyncModal && <SyncModal onClose={() => setShowSyncModal(false)} onSync={syncToggl} syncing={syncing} />}
 
       <div className="max-w-7xl mx-auto space-y-6">
-
         {/* HEADER */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">vihais Tracker</h1>
-            <p className="text-sm text-gray-500">
-                {datePreset === 'ALL' ? 'Alle Zeiträume' : `${format(dateRange.start, 'dd.MM.yyyy')} - ${format(dateRange.end, 'dd.MM.yyyy')}`}
-            </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-              {/* SYNC GROUP */}
               <div className="flex items-center rounded-lg border border-pink-200 bg-pink-50 p-0.5">
-                  <button 
-                    onClick={() => syncToggl()} // Quick sync default
-                    disabled={syncing}
-                    className="flex items-center gap-2 px-3 py-2 text-pink-700 hover:bg-pink-100 rounded-l-md transition text-sm font-medium"
-                    title="Schnell-Sync (3 Monate)"
-                  >
-                      <CloudLightning size={18} className={syncing ? "animate-pulse" : ""} />
-                      <span className="hidden md:inline">Sync</span>
+                  <button onClick={() => syncToggl()} disabled={syncing} className="flex items-center gap-2 px-3 py-2 text-pink-700 hover:bg-pink-100 rounded-l-md transition text-sm font-medium">
+                      <CloudLightning size={18} className={syncing ? "animate-pulse" : ""} /> <span className="hidden md:inline">Sync</span>
                   </button>
                   <div className="w-px h-5 bg-pink-200"></div>
-                  <button 
-                    onClick={() => setShowSyncModal(true)}
-                    className="px-2 py-2 text-pink-700 hover:bg-pink-100 rounded-r-md transition"
-                    title="Einstellungen"
-                  >
-                      <Settings size={18} />
-                  </button>
+                  <button onClick={() => setShowSyncModal(true)} className="px-2 py-2 text-pink-700 hover:bg-pink-100 rounded-r-md transition"><Settings size={18} /></button>
               </div>
-
               <div className="h-8 w-px bg-gray-200 mx-1 hidden md:block"></div>
-
               <button onClick={fetchData} className="p-2.5 text-gray-600 hover:bg-gray-100 rounded-lg transition"><RefreshCw size={20} className={loading ? "animate-spin" : ""} /></button>
-
               <div className="relative">
                   <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" className="hidden" />
                   <button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-sm disabled:opacity-50 text-sm">
@@ -333,68 +284,20 @@ function App() {
           </div>
         </header>
 
-        {/* CONTROLS / FILTER */}
+        {/* CONTROLS */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-wrap items-center gap-4">
-
-            {/* DATE NAVIGATION & PRESET */}
-            <div className="flex items-center gap-2">
-                <button 
-                    onClick={() => navigateDateRange('prev')} 
-                    disabled={datePreset === 'ALL' || datePreset === 'CUSTOM'}
-                    className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                    <ChevronLeft size={20} />
-                </button>
-
-                <div className="relative group">
-                    <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 px-3 py-2.5 rounded-lg text-sm text-gray-700 min-w-[160px]">
-                        <Calendar size={16} className="text-gray-400"/>
-                        <select value={datePreset} onChange={(e) => applyDatePreset(e.target.value as DatePreset)} className="bg-transparent border-none focus:ring-0 p-0 text-gray-700 font-medium w-full cursor-pointer appearance-none">
-                            <option value="TODAY">Heute</option>
-                            <option value="WEEK">Diese Woche</option>
-                            <option value="MONTH">Dieser Monat</option>
-                            <option value="QUARTER">Dieses Quartal</option>
-                            <option value="YEAR">Dieses Jahr</option>
-                            <option value="LAST_WEEK">Letzte Woche</option>
-                            <option value="LAST_MONTH">Letzter Monat</option>
-                            <option value="CUSTOM">Benutzerdefiniert</option>
-                            <option value="ALL">Alles</option>
-                        </select>
-                        <ChevronDown size={14} className="text-gray-400 absolute right-3 pointer-events-none"/>
-                    </div>
-                </div>
-
-                <button 
-                    onClick={() => navigateDateRange('next')} 
-                    disabled={datePreset === 'ALL' || datePreset === 'CUSTOM'}
-                    className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                    <ChevronRight size={20} />
-                </button>
-            </div>
-
-            {/* CUSTOM DATE INPUTS (Only visible if CUSTOM) */}
-            {datePreset === 'CUSTOM' && (
-                <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2">
-                    <input 
-                        type="date" 
-                        value={format(dateRange.start, 'yyyy-MM-dd')}
-                        onChange={(e) => handleCustomDateChange('start', e.target.value)}
-                        className="bg-gray-50 border border-gray-200 rounded-lg text-sm px-2 py-2.5 focus:ring-indigo-500 focus:border-indigo-500"
-                    />
-                    <span className="text-gray-400">-</span>
-                    <input 
-                        type="date" 
-                        value={format(dateRange.end, 'yyyy-MM-dd')}
-                        onChange={(e) => handleCustomDateChange('end', e.target.value)}
-                        className="bg-gray-50 border border-gray-200 rounded-lg text-sm px-2 py-2.5 focus:ring-indigo-500 focus:border-indigo-500"
-                    />
-                </div>
-            )}
+            {/* TOGGL-STYLE DATE PICKER */}
+            <TogglDateRangePicker 
+                preset={datePreset} 
+                range={dateRange} 
+                onPresetChange={handlePresetChange}
+                onRangeChange={(r) => { if(r?.from && r?.to) { setDateRange({start: r.from, end: r.to}); setDatePreset('CUSTOM'); } }}
+                onPrev={() => navigateDateRange('prev')}
+                onNext={() => navigateDateRange('next')}
+            />
 
             <div className="h-8 w-px bg-gray-200 mx-1 hidden md:block"></div>
-
-            {/* FILTERS */}
+            
             <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 px-3 py-2.5 rounded-lg text-sm text-gray-700">
                 <Filter size={16} className="text-gray-400" />
                 <select value={filterSource} onChange={(e) => setFilterSource(e.target.value)} className="bg-transparent border-none focus:ring-0 p-0 w-[110px]">
@@ -409,9 +312,8 @@ function App() {
                     {uniqueProjects.map(proj => <option key={proj} value={proj}>{proj}</option>)}
                 </select>
             </div>
-
             {(filterSource !== 'ALL' || filterProject !== 'ALL' || datePreset !== 'MONTH') && (
-                <button onClick={() => { setFilterSource('ALL'); setFilterProject('ALL'); applyDatePreset('MONTH'); }} className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 ml-auto">
+                <button onClick={() => { setFilterSource('ALL'); setFilterProject('ALL'); handlePresetChange('MONTH'); }} className="flex items-center gap-1 text-sm text-red-500 hover:text-red-700 ml-auto">
                     <XCircle size={16} /> Reset
                 </button>
             )}
@@ -467,9 +369,7 @@ function App() {
                 {selectedDay ? `Details für ${format(parseISO(selectedDay), 'dd.MM.yyyy')}` : 'Alle Einträge im Zeitraum'}
             </h3>
             {selectedDay && (
-                <button onClick={() => setSelectedDay(null)} className="flex items-center gap-1 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-sm font-medium hover:bg-indigo-100 transition">
-                    <XCircle size={14} /> Auswahl aufheben
-                </button>
+                <button onClick={() => setSelectedDay(null)} className="flex items-center gap-1 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-sm font-medium hover:bg-indigo-100 transition"><XCircle size={14} /> Auswahl aufheben</button>
             )}
           </div>
           <div className="flex-1 overflow-auto">
@@ -515,18 +415,105 @@ function App() {
   );
 }
 
-// --- SUB COMPONENTS ---
+// --- NEW COMPONENT: TOGGL DATE PICKER ---
+function TogglDateRangePicker({ 
+    preset, range, onPresetChange, onRangeChange, onPrev, onNext 
+}: { 
+    preset: DatePreset, range: {start: Date, end: Date}, 
+    onPresetChange: (p: DatePreset) => void, onRangeChange: (r: DateRange | undefined) => void,
+    onPrev: () => void, onNext: () => void
+}) {
+    const [isOpen, setIsOpen] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
 
-// SYNC MODAL (NEU)
+    // Klick außerhalb schließt das Popover
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const dateText = preset === 'ALL' 
+        ? 'Alle Zeiträume' 
+        : `${format(range.start, 'dd MMM yyyy', {locale: de})} - ${format(range.end, 'dd MMM yyyy', {locale: de})}`;
+
+    const PRESETS: { label: string, val: DatePreset }[] = [
+        { label: 'Heute', val: 'TODAY' },
+        { label: 'Diese Woche', val: 'WEEK' },
+        { label: 'Dieser Monat', val: 'MONTH' },
+        { label: 'Dieses Quartal', val: 'QUARTER' },
+        { label: 'Dieses Jahr', val: 'YEAR' },
+        { label: 'Letzte Woche', val: 'LAST_WEEK' },
+        { label: 'Letzter Monat', val: 'LAST_MONTH' },
+        { label: 'Gesamt', val: 'ALL' },
+    ];
+
+    return (
+        <div className="relative" ref={containerRef}>
+            {/* TRIGGER BUTTON (Like Screenshot) */}
+            <div className="flex items-center gap-1 bg-white border border-gray-300 rounded-md p-0.5 hover:border-gray-400 transition-colors shadow-sm">
+                 <button onClick={onPrev} disabled={preset === 'ALL'} className="p-1.5 hover:bg-gray-100 rounded text-gray-600 disabled:opacity-30"><ChevronLeft size={16}/></button>
+                 <button 
+                    onClick={() => setIsOpen(!isOpen)} 
+                    className="flex items-center gap-2 px-2 py-1 hover:bg-gray-50 rounded text-sm font-medium text-gray-700 min-w-[180px] justify-center"
+                 >
+                    <CalendarIcon size={14} className="text-gray-500" />
+                    <span>{dateText}</span>
+                    <ChevronDown size={12} className="text-gray-400" />
+                 </button>
+                 <button onClick={onNext} disabled={preset === 'ALL'} className="p-1.5 hover:bg-gray-100 rounded text-gray-600 disabled:opacity-30"><ChevronRight size={16}/></button>
+            </div>
+
+            {/* POPOVER CONTENT */}
+            {isOpen && (
+                <div className="absolute top-full left-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 z-50 flex overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                    
+                    {/* LEFT SIDEBAR (PRESETS) */}
+                    <div className="w-40 border-r border-gray-100 p-2 flex flex-col gap-0.5 bg-gray-50/50">
+                        {PRESETS.map(p => (
+                            <button
+                                key={p.val}
+                                onClick={() => { onPresetChange(p.val); setIsOpen(false); }}
+                                className={`text-left px-3 py-2 rounded-md text-sm transition-colors flex justify-between items-center ${
+                                    preset === p.val 
+                                    ? 'bg-white text-pink-600 font-medium shadow-sm ring-1 ring-gray-200' 
+                                    : 'text-gray-600 hover:bg-gray-200/50 hover:text-gray-900'
+                                }`}
+                            >
+                                {p.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* RIGHT SIDE (CALENDAR) */}
+                    <div className="p-4">
+                        <DayPicker
+                            mode="range"
+                            defaultMonth={range.start}
+                            selected={{ from: range.start, to: range.end }}
+                            onSelect={(r) => onRangeChange(r)}
+                            locale={de}
+                            numberOfMonths={1}
+                            pagedNavigation
+                            showOutsideDays
+                            className="rdp-custom"
+                        />
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ... Rest of Subcomponents (EditModal, SyncModal, SortableHeader, Card) ...
 function SyncModal({ onClose, onSync, syncing }: { onClose: () => void, onSync: (start?: string, end?: string) => void, syncing: boolean }) {
     const [start, setStart] = useState('');
     const [end, setEnd] = useState('');
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onSync(start, end);
-    };
-
+    const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSync(start, end); };
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
              <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -536,45 +523,22 @@ function SyncModal({ onClose, onSync, syncing }: { onClose: () => void, onSync: 
                 </div>
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
                     <p className="text-sm text-gray-600">Lege fest, welcher Zeitraum von Toggl synchronisiert werden soll. Wenn leer, werden die letzten 3 Monate geladen.</p>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Von</label>
-                        <input type="date" value={start} onChange={e => setStart(e.target.value)} className="w-full rounded-lg border-gray-300 shadow-sm p-2 border" />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Bis</label>
-                        <input type="date" value={end} onChange={e => setEnd(e.target.value)} className="w-full rounded-lg border-gray-300 shadow-sm p-2 border" />
-                    </div>
-                    <div className="pt-2 flex justify-end gap-3">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 border rounded-lg">Abbrechen</button>
-                        <button type="submit" disabled={syncing} className="px-4 py-2 text-sm font-medium text-white bg-pink-600 hover:bg-pink-700 rounded-lg flex items-center gap-2">
-                            {syncing ? <Loader2 size={16} className="animate-spin"/> : <CloudLightning size={16}/>} 
-                            Jetzt Syncen
-                        </button>
-                    </div>
+                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Von</label><input type="date" value={start} onChange={e => setStart(e.target.value)} className="w-full rounded-lg border-gray-300 shadow-sm p-2 border" /></div>
+                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Bis</label><input type="date" value={end} onChange={e => setEnd(e.target.value)} className="w-full rounded-lg border-gray-300 shadow-sm p-2 border" /></div>
+                    <div className="pt-2 flex justify-end gap-3"><button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 border rounded-lg">Abbrechen</button><button type="submit" disabled={syncing} className="px-4 py-2 text-sm font-medium text-white bg-pink-600 hover:bg-pink-700 rounded-lg flex items-center gap-2">{syncing ? <Loader2 size={16} className="animate-spin"/> : <CloudLightning size={16}/>} Jetzt Syncen</button></div>
                 </form>
              </div>
         </div>
     );
 }
 
-// Edit Modal Component (Bestehend)
 function EditModal({ entry, onClose, onSave }: { entry: TimeEntry, onClose: () => void, onSave: (e: TimeEntry) => void }) {
-    const [formData, setFormData] = useState({
-        date: format(parseISO(entry.date), 'yyyy-MM-dd'),
-        duration: entry.duration,
-        project: entry.project,
-        description: entry.description,
-        source: entry.source
-    });
+    const [formData, setFormData] = useState({ date: format(parseISO(entry.date), 'yyyy-MM-dd'), duration: entry.duration, project: entry.project, description: entry.description, source: entry.source });
     const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSave({ ...entry, ...formData }); };
-
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-                <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                    <h3 className="font-bold text-gray-800 text-lg">Eintrag bearbeiten</h3>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
-                </div>
+                <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50"><h3 className="font-bold text-gray-800 text-lg">Eintrag bearbeiten</h3><button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button></div>
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Datum</label><input type="date" required value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="w-full rounded-lg border-gray-300 shadow-sm p-2.5 border" /></div>
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Dauer (Stunden)</label><input type="number" step="0.01" min="0.01" required value={formData.duration} onChange={e => setFormData({...formData, duration: parseFloat(e.target.value)})} className="w-full rounded-lg border-gray-300 shadow-sm p-2.5 border" /></div>
@@ -589,25 +553,14 @@ function EditModal({ entry, onClose, onSave }: { entry: TimeEntry, onClose: () =
 
 function Card({ title, value, unit, color }: { title: string, value: string, unit: string, color: string }) {
     return (
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">{title}</p>
-            <div className="flex items-baseline gap-1">
-                <span className={`text-3xl font-bold ${color}`}>{value}</span>
-                <span className="text-gray-400 font-medium">{unit}</span>
-            </div>
-        </div>
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100"><p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">{title}</p><div className="flex items-baseline gap-1"><span className={`text-3xl font-bold ${color}`}>{value}</span><span className="text-gray-400 font-medium">{unit}</span></div></div>
     );
 }
 
 function SortableHeader({ label, sortKey, currentSort, onSort, align = 'left' }: { label: string; sortKey: SortKey; currentSort: { key: SortKey; direction: SortDirection }; onSort: (key: SortKey) => void; align?: 'left' | 'right'; }) {
     const isActive = currentSort.key === sortKey;
     return (
-        <th className={`px-6 py-3 font-medium cursor-pointer hover:text-gray-700 hover:bg-gray-100 transition user-select-none ${align === 'right' ? 'text-right' : ''}`} onClick={() => onSort(sortKey)}>
-            <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : ''}`}>
-                {label}
-                {isActive ? (currentSort.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : (<ArrowUpDown size={14} className="opacity-30" />)}
-            </div>
-        </th>
+        <th className={`px-6 py-3 font-medium cursor-pointer hover:text-gray-700 hover:bg-gray-100 transition user-select-none ${align === 'right' ? 'text-right' : ''}`} onClick={() => onSort(sortKey)}><div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : ''}`}>{label}{isActive ? (currentSort.direction === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />) : (<ArrowUpDown size={14} className="opacity-30" />)}</div></th>
     );
 }
 

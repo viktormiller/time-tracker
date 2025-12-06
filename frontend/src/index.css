@@ -10,3 +10,17 @@ body {
 *:focus {
   outline: none;
 }
+
+/* Custom Styles für den Kalender um ihn wie Toggl aussehen zu lassen */
+.rdp {
+  --rdp-cell-size: 40px;
+  --rdp-accent-color: #db2777; /* Pink-600 */
+  --rdp-background-color: #fce7f3; /* Pink-100 */
+  margin: 0;
+}
+.rdp-day_selected:not([aria-disabled="true"]) { 
+  background-color: var(--rdp-accent-color); 
+}
+.rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
+  background-color: #f3f4f6;
+}
