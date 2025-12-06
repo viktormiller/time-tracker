@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { TogglService } from './services/toggl.service';
+import { TempoService } from './services/tempo.service';
 import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
 import cors from '@fastify/cors';
@@ -86,6 +87,22 @@ app.post<{ Querystring: { force: string }, Body: { startDate?: string, endDate?:
 
     try {
         const result = await togglService.syncTogglEntries(force, startDate, endDate);
+        return result;
+    } catch (error) {
+        req.log.error(error);
+        return reply.code(500).send({ error: (error as Error).message });
+    }
+});
+
+// Tempo Sync Route
+app.post<{ Querystring: { force: string }, Body: { startDate?: string, endDate?: string } }>('/api/sync/tempo', async (req, reply) => {
+    const force = req.query.force === 'true';
+    const { startDate, endDate } = req.body || {};
+
+    const tempoService = new TempoService(prisma);
+
+    try {
+        const result = await tempoService.syncTempoEntries(force, startDate, endDate);
         return result;
     } catch (error) {
         req.log.error(error);

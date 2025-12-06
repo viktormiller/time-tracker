@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { 
   Upload, Loader2, RefreshCw, Filter, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown, 
-  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon 
+  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers
 } from 'lucide-react';
 import { 
   format, parseISO, isSameDay, startOfToday, endOfToday, 
@@ -73,7 +73,7 @@ function App() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'date', direction: 'desc' });
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
-  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [showSyncModal, setShowSyncModal] = useState<'TOGGL' | 'TEMPO' | null>(null);
 
   // DATE STATE
   const [datePreset, setDatePreset] = useState<DatePreset>('MONTH');
@@ -113,6 +113,20 @@ function App() {
       } catch (error) {
           if (axios.isAxiosError(error) && error.response?.data?.error) alert(`Fehler beim Toggl Sync: ${error.response.data.error}`);
           else alert('Unbekannter Fehler beim Toggl Sync.');
+      } finally { setSyncing(false); }
+  };
+
+  const syncTempo = async (startDate?: string, endDate?: string) => {
+      setSyncing(true); setShowSyncModal(false);
+      try {
+          const isCustom = !!startDate;
+          const payload = isCustom ? { startDate, endDate } : {};
+          const res = await axios.post(`${API_URL}/sync/tempo?force=${isCustom}`, payload);
+          alert(`Tempo Sync erfolgreich: ${res.data.message} (${res.data.count} Einträge)`);
+          fetchData();
+      } catch (error) {
+          if (axios.isAxiosError(error) && error.response?.data?.error) alert(`Fehler beim Tempo Sync: ${error.response.data.error}`);
+          else alert('Unbekannter Fehler beim Tempo Sync.');
       } finally { setSyncing(false); }
   };
 
@@ -257,7 +271,15 @@ function App() {
     <div className="min-h-screen bg-gray-50 text-gray-800 p-6 font-sans relative">
       {/* MODALS */}
       {editingEntry && <EditModal entry={editingEntry} onClose={() => setEditingEntry(null)} onSave={updateEntry} />}
-      {showSyncModal && <SyncModal onClose={() => setShowSyncModal(false)} onSync={syncToggl} syncing={syncing} />}
+
+      {showSyncModal && (
+        <SyncModal 
+            service={showSyncModal} // 'TOGGL' oder 'TEMPO' übergeben
+            onClose={() => setShowSyncModal(null)} 
+            onSync={(start, end) => showSyncModal === 'TOGGL' ? syncToggl(start, end) : syncTempo(start, end)} 
+            syncing={syncing} 
+        />
+      )}
 
       <div className="max-w-7xl mx-auto space-y-6">
         {/* HEADER */}
@@ -266,13 +288,25 @@ function App() {
             <h1 className="text-2xl font-bold text-gray-900">vihais Tracker</h1>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center rounded-lg border border-pink-200 bg-pink-50 p-0.5">
+
+               {/* SYNC GROUP */}
+              <div className="flex items-center rounded-lg border border-pink-200 bg-pink-50 p-0.5 mr-2">
                   <button onClick={() => syncToggl()} disabled={syncing} className="flex items-center gap-2 px-3 py-2 text-pink-700 hover:bg-pink-100 rounded-l-md transition text-sm font-medium">
-                      <CloudLightning size={18} className={syncing ? "animate-pulse" : ""} /> <span className="hidden md:inline">Sync</span>
+                      <CloudLightning size={18} className={syncing ? "animate-pulse" : ""} /> <span className="hidden md:inline">Toggl</span>
                   </button>
                   <div className="w-px h-5 bg-pink-200"></div>
-                  <button onClick={() => setShowSyncModal(true)} className="px-2 py-2 text-pink-700 hover:bg-pink-100 rounded-r-md transition"><Settings size={18} /></button>
+                  <button onClick={() => setShowSyncModal('TOGGL')} className="px-2 py-2 text-pink-700 hover:bg-pink-100 rounded-r-md transition"><Settings size={18} /></button>
               </div>
+
+              {/* TEMPO SYNC GROUP - Blau gehalten für Jira */}
+              <div className="flex items-center rounded-lg border border-blue-200 bg-blue-50 p-0.5">
+                  <button onClick={() => syncTempo()} disabled={syncing} className="flex items-center gap-2 px-3 py-2 text-blue-700 hover:bg-blue-100 rounded-l-md transition text-sm font-medium">
+                      <Layers size={18} className={syncing ? "animate-pulse" : ""} /> <span className="hidden md:inline">Tempo</span>
+                  </button>
+                  <div className="w-px h-5 bg-blue-200"></div>
+                  <button onClick={() => setShowSyncModal('TEMPO')} className="px-2 py-2 text-blue-700 hover:bg-blue-100 rounded-r-md transition"><Settings size={18} /></button>
+              </div>
+
               <div className="h-8 w-px bg-gray-200 mx-1 hidden md:block"></div>
               <button onClick={fetchData} className="p-2.5 text-gray-600 hover:bg-gray-100 rounded-lg transition"><RefreshCw size={20} className={loading ? "animate-spin" : ""} /></button>
               <div className="relative">
@@ -509,23 +543,28 @@ function TogglDateRangePicker({
     );
 }
 
-// ... Rest of Subcomponents (EditModal, SyncModal, SortableHeader, Card) ...
-function SyncModal({ onClose, onSync, syncing }: { onClose: () => void, onSync: (start?: string, end?: string) => void, syncing: boolean }) {
+function SyncModal({ service, onClose, onSync, syncing }: { service: string, onClose: () => void, onSync: (start?: string, end?: string) => void, syncing: boolean }) {
     const [start, setStart] = useState('');
     const [end, setEnd] = useState('');
     const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSync(start, end); };
+
+    // Farben basierend auf Service
+    const isToggl = service === 'TOGGL';
+    const colorClass = isToggl ? 'text-pink-600' : 'text-blue-600';
+    const bgBtnClass = isToggl ? 'bg-pink-600 hover:bg-pink-700' : 'bg-blue-600 hover:bg-blue-700';
+
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
              <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
                 <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                    <h3 className="font-bold text-gray-800 text-lg">Toggl Sync Einstellungen</h3>
+                    <h3 className={`font-bold text-lg ${colorClass}`}>{service} Sync Einstellungen</h3>
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
                 </div>
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                    <p className="text-sm text-gray-600">Lege fest, welcher Zeitraum von Toggl synchronisiert werden soll. Wenn leer, werden die letzten 3 Monate geladen.</p>
+                    <p className="text-sm text-gray-600">Lege fest, welcher Zeitraum von {service} synchronisiert werden soll.</p>
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Von</label><input type="date" value={start} onChange={e => setStart(e.target.value)} className="w-full rounded-lg border-gray-300 shadow-sm p-2 border" /></div>
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Bis</label><input type="date" value={end} onChange={e => setEnd(e.target.value)} className="w-full rounded-lg border-gray-300 shadow-sm p-2 border" /></div>
-                    <div className="pt-2 flex justify-end gap-3"><button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 border rounded-lg">Abbrechen</button><button type="submit" disabled={syncing} className="px-4 py-2 text-sm font-medium text-white bg-pink-600 hover:bg-pink-700 rounded-lg flex items-center gap-2">{syncing ? <Loader2 size={16} className="animate-spin"/> : <CloudLightning size={16}/>} Jetzt Syncen</button></div>
+                    <div className="pt-2 flex justify-end gap-3"><button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 border rounded-lg">Abbrechen</button><button type="submit" disabled={syncing} className={`px-4 py-2 text-sm font-medium text-white rounded-lg flex items-center gap-2 ${bgBtnClass}`}>{syncing ? <Loader2 size={16} className="animate-spin"/> : <CloudLightning size={16}/>} Jetzt Syncen</button></div>
                 </form>
              </div>
         </div>
