@@ -47,12 +47,12 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  
+
   // Filter States
   const [filterSource, setFilterSource] = useState<string>('ALL');
   const [filterProject, setFilterProject] = useState<string>('ALL');
   const [datePreset, setDatePreset] = useState<DatePreset>('MONTH');
-  
+
   // Date Range State
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>(() => {
     return { start: startOfMonth(new Date()), end: endOfMonth(new Date()) };
@@ -64,7 +64,7 @@ function App() {
     key: 'date',
     direction: 'desc' 
   });
-  
+
   // MODAL STATES
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
   const [showSyncModal, setShowSyncModal] = useState(false);
@@ -107,13 +107,17 @@ function App() {
           // Force ist true, wenn Daten manuell gewählt wurden
           const isCustom = !!startDate;
           const payload = isCustom ? { startDate, endDate } : {};
-          
+
           const res = await axios.post(`${API_URL}/sync/toggl?force=${isCustom}`, payload);
           alert(`Sync erfolgreich: ${res.data.message} (${res.data.count} Einträge)`);
           fetchData();
       } catch (error) {
           console.error(error);
-          alert('Fehler beim Toggl Sync.');
+          if (axios.isAxiosError(error) && error.response?.data?.error) {
+              alert(`Fehler beim Toggl Sync: ${error.response.data.error}`);
+          } else {
+              alert('Unbekannter Fehler beim Toggl Sync.');
+          }
       } finally {
           setSyncing(false);
       }
@@ -279,13 +283,13 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800 p-6 font-sans relative">
-      
+
       {/* MODALS */}
       {editingEntry && <EditModal entry={editingEntry} onClose={() => setEditingEntry(null)} onSave={updateEntry} />}
       {showSyncModal && <SyncModal onClose={() => setShowSyncModal(false)} onSync={syncToggl} syncing={syncing} />}
 
       <div className="max-w-7xl mx-auto space-y-6">
-        
+
         {/* HEADER */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
           <div>
@@ -319,7 +323,7 @@ function App() {
               <div className="h-8 w-px bg-gray-200 mx-1 hidden md:block"></div>
 
               <button onClick={fetchData} className="p-2.5 text-gray-600 hover:bg-gray-100 rounded-lg transition"><RefreshCw size={20} className={loading ? "animate-spin" : ""} /></button>
-              
+
               <div className="relative">
                   <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" className="hidden" />
                   <button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-sm disabled:opacity-50 text-sm">
@@ -331,7 +335,7 @@ function App() {
 
         {/* CONTROLS / FILTER */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-wrap items-center gap-4">
-            
+
             {/* DATE NAVIGATION & PRESET */}
             <div className="flex items-center gap-2">
                 <button 
@@ -389,7 +393,7 @@ function App() {
             )}
 
             <div className="h-8 w-px bg-gray-200 mx-1 hidden md:block"></div>
-            
+
             {/* FILTERS */}
             <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 px-3 py-2.5 rounded-lg text-sm text-gray-700">
                 <Filter size={16} className="text-gray-400" />

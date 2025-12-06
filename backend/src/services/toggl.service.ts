@@ -63,15 +63,23 @@ export class TogglService {
             end_date: endDateStr
         };
 
-        const response = await axios.get('https://api.track.toggl.com/api/v9/me/time_entries', {
-            params,
-            headers: {
-                Authorization: `Basic ${Buffer.from(`${token}:api_token`).toString('base64')}`,
-                'Content-Type': 'application/json'
+        try {
+            const response = await axios.get('https://api.track.toggl.com/api/v9/me/time_entries', {
+                params,
+                headers: {
+                    Authorization: `Basic ${Buffer.from(`${token}:api_token`).toString('base64')}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            entries = response.data;
+        } catch (error) {
+            if (axios.isAxiosError(error) && error.response?.status === 400) {
+                // Spezifische Nachricht für den User
+                throw new Error('Der gewählte Zeitraum ist zu groß für die Toggl API. Bitte wähle einen Zeitraum von maximal 3 Monaten.');
             }
-        });
-
-        entries = response.data;
+            // Alle anderen Fehler weiterwerfen
+            throw error;
+        }
 
 
         // Cache nur aktualisieren, wenn es der Standard-Sync war
