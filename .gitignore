@@ -1,3 +1,4 @@
 backend/node_modules
 /.idea/
 /backend/.env
+/backend/toggl_cache.json
