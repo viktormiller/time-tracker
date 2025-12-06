@@ -37,6 +37,8 @@ export class TogglService {
 
         // Zeitraum: Letzte 3 Monate bis heute (um sicher zu gehen)
         const endDate = new Date();
+        endDate.setDate(endDate.getDate() + 1); // +1 Tag
+
         const startDate = new Date();
         startDate.setMonth(startDate.getMonth() - 3);
 
