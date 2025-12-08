@@ -67,10 +67,31 @@ app.post('/api/upload', async (req, reply) => {
   // Batch insert into Database
   let count = 0;
   for (const entry of result.entries) {
-    // Avoid duplicates? 
-    // Ideally we check if (source, externalId, date, duration) exists.
-    // For MVP, we just insert. Cleaning duplicates is a future feature.
-    await prisma.timeEntry.create({ data: entry });
+
+    const extId = entry.externalId || `FALLBACK_${entry.source}_${entry.date.getTime()}_${Math.random()}`;
+
+    await prisma.timeEntry.upsert({
+        where: {
+            source_externalId: {
+                source: entry.source,
+                externalId: extId
+            }
+        },
+        update: {
+            // Wenn es den Eintrag schon gibt: Update machen (z.B. Description geändert?)
+            duration: entry.duration,
+            description: entry.description,
+            project: entry.project
+        },
+        create: {
+            source: entry.source,
+            externalId: extId,
+            date: entry.date,
+            duration: entry.duration,
+            project: entry.project,
+            description: entry.description
+        }
+    });
     count++;
   }
 

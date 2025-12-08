@@ -61,12 +61,20 @@ export class TempoCsvAdapter implements ImportAdapter {
                 const hours = parseFloat(cellValue);
                 
                 if (!isNaN(hours) && hours > 0) {
+
+                    // Synthetische ID
+                    // Datum (als Timestamp) + IssueKey + Dauer verhindert Duplikate beim erneuten Import
+                    // ACHTUNG: Wenn du am gleichen Tag 2x 2h am gleichen Ticket gearbeitet hast, 
+                    // fasst Tempo CSV das meist eh zusammen. Falls nicht, wäre das hier ein Problem.
+                    // Für die Matrix-Ansicht ist das aber okay.
+                    const syntheticId = `CSV_TEMPO_${dateObj.getTime()}_${key}_${hours}`;
+
                     result.entries.push({
                         source: 'TEMPO',
-                        externalId: key, // Tempo Key is unique
-                        date: dateObj,   // The date from the header
+                        externalId: syntheticId,
+                        date: dateObj,
                         duration: hours,
-                        project: key,    // Use Key as Project for now
+                        project: key,
                         description: issue,
                     });
                 }

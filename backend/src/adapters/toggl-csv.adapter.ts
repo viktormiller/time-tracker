@@ -37,21 +37,25 @@ async parse(fileContent: string): Promise<ImportResult> {
 
         const fullDate = new Date(`${dateStr}T${timeStr || '00:00:00'}`);
 
-        // Duration in Toggl CSV is often "HH:MM:SS" or decimal. 
-        // Based on user example: "0.02" (decimal hours).
-        // Let's handle both just in case, but assume decimal based on example.
-        let duration = parseFloat(row['Duration']);
+        const durationRaw = row['Duration'];
+        const duration = this.parseDuration(durationRaw);
+        if (isNaN(duration) || duration <= 0) continue;
 
-        // If parsing fails or is 0, skip
-        if (isNaN(duration) || duration === 0) continue;
+        const project = row['Project'] || 'No Project';
+        const description = row['Description'] || '';
+
+        // NEU: Synthetische ID generieren
+        // Wir nehmen Datum + Zeit + Projekt als Eindeutigkeitsmerkmal für CSVs
+        // .getTime() liefert den Timestamp als Zahl
+        const syntheticId = `CSV_TOGGL_${fullDate.getTime()}_${project.replace(/\s/g, '')}`;
 
         result.entries.push({
           source: 'TOGGL',
-          externalId: null, // Detailed report doesn't always have IDs
+          externalId: syntheticId,
           date: fullDate,
           duration: duration,
-          project: row['Project'] || 'No Project',
-          description: row['Description'] || '',
+          project: project,
+          description: description,
         });
       }
     } catch (error) {
@@ -59,5 +63,25 @@ async parse(fileContent: string): Promise<ImportResult> {
     }
 
     return result;
+  }
+
+  private parseDuration(input: string): number {
+    if (!input) return 0;
+
+    // Fall A: HH:MM:SS Format
+    if (input.includes(':')) {
+        const parts = input.split(':').map(Number);
+        // Stunden + Minuten/60 + Sekunden/3600
+        let hours = 0;
+        if (parts.length === 3) {
+            hours = parts[0] + parts[1] / 60 + parts[2] / 3600;
+        } else if (parts.length === 2) {
+            hours = parts[0] + parts[1] / 60;
+        }
+        return hours;
+    }
+
+    // Fall B: Dezimal (z.B. "1.5")
+    return parseFloat(input);
   }
 }

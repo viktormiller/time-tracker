@@ -34,7 +34,7 @@ export class TempoService {
     // 2. API Abruf
     if (!usedCache) {
         console.log('[Tempo] Fetching fresh data from API...');
-        
+
         let startDateStr = '';
         let endDateStr = '';
 
@@ -47,7 +47,7 @@ export class TempoService {
             endDate.setDate(endDate.getDate() + 1);
             const startDate = new Date();
             startDate.setMonth(startDate.getMonth() - 3);
-            
+
             startDateStr = startDate.toISOString().split('T')[0];
             endDateStr = endDate.toISOString().split('T')[0];
         }
@@ -66,7 +66,7 @@ export class TempoService {
                     'Content-Type': 'application/json'
                 }
             });
-            
+
             // Tempo liefert Daten im "results" Array
             entries = response.data.results;
 
@@ -82,26 +82,35 @@ export class TempoService {
         }
     }
 
+    // DEBUG: Den ersten Eintrag loggen, damit wir die Struktur sehen
+    if (entries.length > 0) {
+        console.log('[Tempo Debug] Erster Eintrag Rohdaten:', JSON.stringify(entries[0], null, 2));
+    }
+
     // 3. Speichern in DB
     let count = 0;
     for (const entry of entries) {
-        // Mapping Tempo -> Unsere DB
-        // entry.timeSpentSeconds -> Sekunden
-        // entry.issue.key -> "PROJ-123"
-        // entry.description -> Text
-        // entry.startDate -> "2025-12-01"
-        
         const durationHours = entry.timeSpentSeconds / 3600;
-        const issueKey = entry.issue?.key || 'Unknown Issue';
-        
-        // Manche Tempo Einträge haben keine Description, fallback auf Summary oder leer
-        const description = entry.description || ''; 
+
+        // ROBUSTERE ABFRAGE:
+        // Wir prüfen verschiedene Orte, wo der Key liegen könnte
+        let issueKey = 'Unknown Issue';
+
+        if (entry.issue && entry.issue.key) {
+            issueKey = entry.issue.key;
+        } else if (entry.issue && entry.issue.id) {
+            // Fallback: Wenn Key fehlt, nehmen wir die ID (aus deinem Log: 24990)
+            issueKey = `Issue #${entry.issue.id}`;
+        }
+
+        // Falls Description fehlt, nutzen wir den Kommentar (Tempo nennt das oft 'comment')
+        const description = entry.description || entry.comment || ''; 
 
         await this.prisma.timeEntry.upsert({
             where: {
                 source_externalId: {
                     source: 'TEMPO',
-                    externalId: entry.tempoWorklogId.toString() // Wichtig: Tempo ID nutzen
+                    externalId: entry.tempoWorklogId.toString()
                 }
             },
             update: {
