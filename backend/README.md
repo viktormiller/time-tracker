@@ -1,6 +1,12 @@
 # Backend
 
-# Open Database
+## Start Backend
+
+```bash
+npm run dev
+```
+
+## Open Database
 
 ```bash
 npx prisma studio

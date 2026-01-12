@@ -6,9 +6,8 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      // Alles was mit /api beginnt, wird an das Backend auf Port 3000 weitergeleitet
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://127.0.0.1:3000', // Leitet an Backend weiter
         changeOrigin: true,
         secure: false,
       }
