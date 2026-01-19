@@ -32,10 +32,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. User can log out from any page
   4. All API routes require valid authentication
   5. Unauthenticated requests are rejected with 401
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 01-01: TBD
+- [ ] 01-01-PLAN.md — Backend auth infrastructure (JWT, sessions, security)
+- [ ] 01-02-PLAN.md — Auth routes and middleware (login, logout, refresh)
+- [ ] 01-03-PLAN.md — Protect API routes and frontend integration
+- [ ] 01-04-PLAN.md — Verify complete authentication flow
 
 ### Phase 2: Containerization & Deployment
 **Goal**: Application runs in production-ready Docker containers on Hetzner
@@ -134,7 +137,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Authentication & Security | 0/? | Not started | - |
+| 1. Authentication & Security | 0/4 | Planning complete | - |
 | 2. Containerization & Deployment | 0/? | Not started | - |
 | 3. Data Quality & PostgreSQL Migration | 0/? | Not started | - |
 | 4. UX Enhancements | 0/? | Not started | - |
