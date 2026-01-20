@@ -17,8 +17,11 @@ export default fp(async (fastify: FastifyInstance) => {
     timeWindow: '15 minutes', // per 15 minute window
     cache: 10000, // Cache up to 10k different IPs
     allowList: (req: FastifyRequest) => {
-      // Don't rate limit health check endpoints
-      return req.url.includes('/health') || req.url.includes('/api/health');
+      // Don't rate limit health check endpoints or auth refresh
+      // Refresh is already protected by HttpOnly cookie and called on every page load
+      return req.url.includes('/health') ||
+             req.url.includes('/api/health') ||
+             req.url.includes('/api/auth/refresh');
     },
   });
 });
