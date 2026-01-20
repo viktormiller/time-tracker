@@ -21,7 +21,17 @@ export default async function (fastify: FastifyInstance) {
    */
   fastify.post<{
     Body: { username: string; password: string };
-  }>('/api/auth/login', async (request, reply) => {
+  }>(
+    '/api/auth/login',
+    {
+      config: {
+        rateLimit: {
+          max: 5, // Maximum 5 login attempts
+          timeWindow: '15 minutes', // per 15 minute window
+        },
+      },
+    },
+    async (request, reply) => {
     const { username, password } = request.body;
 
     // Validate required fields
@@ -84,7 +94,8 @@ export default async function (fastify: FastifyInstance) {
       accessToken,
       expiresIn: 900, // 15 minutes in seconds
     };
-  });
+  }
+  );
 
   /**
    * POST /api/auth/refresh
