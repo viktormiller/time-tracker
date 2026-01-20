@@ -12,7 +12,7 @@ This roadmap transforms a working time tracking aggregator into a production-rea
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Authentication & Security** - Single-user login with JWT protection
+- [x] **Phase 1: Authentication & Security** - Single-user login with JWT protection
 - [ ] **Phase 2: Containerization & Deployment** - Docker infrastructure for production deployment
 - [ ] **Phase 3: Data Quality & PostgreSQL Migration** - Production database with robust ID handling
 - [ ] **Phase 4: UX Enhancements** - Dark mode and export capabilities
@@ -35,10 +35,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 4 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Backend auth infrastructure (JWT, sessions, security)
-- [ ] 01-02-PLAN.md — Auth routes and middleware (login, logout, refresh)
-- [ ] 01-03-PLAN.md — Protect API routes and frontend integration
-- [ ] 01-04-PLAN.md — Verify complete authentication flow
+- [x] 01-01-PLAN.md — Backend auth infrastructure (JWT, sessions, security)
+- [x] 01-02-PLAN.md — Auth routes and middleware (login, logout, refresh)
+- [x] 01-03-PLAN.md — Protect API routes and frontend integration
+- [x] 01-04-PLAN.md — Verify complete authentication flow
 
 ### Phase 2: Containerization & Deployment
 **Goal**: Application runs in production-ready Docker containers on Hetzner
@@ -137,7 +137,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Authentication & Security | 0/4 | Planning complete | - |
+| 1. Authentication & Security | 4/4 | ✓ Complete | 2026-01-21 |
 | 2. Containerization & Deployment | 0/? | Not started | - |
 | 3. Data Quality & PostgreSQL Migration | 0/? | Not started | - |
 | 4. UX Enhancements | 0/? | Not started | - |
