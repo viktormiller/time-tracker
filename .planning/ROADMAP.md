@@ -50,10 +50,13 @@ Plans:
   3. `docker-compose up` launches entire stack
   4. Secrets managed via Docker Secrets (not environment variables)
   5. Only ports 80/443 exposed to public (database internal only)
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 02-01: TBD
+- [ ] 02-01-PLAN.md — Backend Dockerfile, health endpoint, PostgreSQL config
+- [ ] 02-02-PLAN.md — Frontend Dockerfile, Nginx SPA routing and API proxy
+- [ ] 02-03-PLAN.md — Docker Compose orchestration and secrets management
+- [ ] 02-04-PLAN.md — End-to-end Docker stack verification
 
 ### Phase 3: Data Quality & PostgreSQL Migration
 **Goal**: Production database with timezone support and robust synthetic IDs
@@ -138,7 +141,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Authentication & Security | 4/4 | ✓ Complete | 2026-01-21 |
-| 2. Containerization & Deployment | 0/? | Not started | - |
+| 2. Containerization & Deployment | 0/4 | Planned | - |
 | 3. Data Quality & PostgreSQL Migration | 0/? | Not started | - |
 | 4. UX Enhancements | 0/? | Not started | - |
 | 5. Manual Entry & Provider Abstraction | 0/? | Not started | - |
