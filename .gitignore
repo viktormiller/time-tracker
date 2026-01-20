@@ -4,3 +4,4 @@ backend/node_modules
 /backend/toggl_cache.json
 /backend/tempo_cache.json
 backend/prisma/dev.db
+backend/secrets/
