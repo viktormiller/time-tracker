@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-01-19)
 ## Current Position
 
 Phase: 1 of 7 (Authentication & Security)
-Plan: 1 of 4 in phase complete
+Plan: 2 of 4 in phase complete
 Status: In progress
-Last activity: 2026-01-20 — Completed 01-01-PLAN.md (Backend Auth Infrastructure)
+Last activity: 2026-01-20 — Completed 01-02-PLAN.md (Auth Routes Implementation)
 
-Progress: [██░░░░░░░░] 25% (Phase 1: 1/4 plans)
+Progress: [████░░░░░░] 50% (Phase 1: 2/4 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 6 min
-- Total execution time: 0.1 hours
+- Total plans completed: 2
+- Average duration: 5.5 min
+- Total execution time: 0.18 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-authentication-a-security | 1/4 | 6 min | 6 min |
+| 01-authentication-a-security | 2/4 | 11 min | 5.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (6min)
-- Trend: Just started (1 plan completed)
+- Last 5 plans: 01-01 (6min), 01-02 (5min)
+- Trend: Consistent velocity (~6min per plan)
 
 *Updated after each plan completion*
 
@@ -55,17 +55,27 @@ Recent decisions affecting current work:
 - Store secrets in backend/secrets/ directory (gitignored)
 - loadSecret() pattern: Docker Secrets (/run/secrets/) with env var fallback
 
+**From 01-02 (Auth Routes Implementation):**
+- Use direct property assignment for session data via request.session.set()
+- Extend SessionData interface for TypeScript type safety
+- Downgrade Fastify plugins to versions compatible with Fastify 4.29.1
+- Register auth routes before other API routes to keep them public
+- Session fixation prevention: Always call request.session.delete() before setting new session data on login
+- Token rotation: Generate new refresh token on each /auth/refresh request
+
 ### Pending Todos
 
 None yet.
 
 ### Blockers/Concerns
 
-None yet.
+**From 01-02:**
+- Rate limiting (5 req/15min) is very aggressive and may trigger during development testing. Consider adjusting or disabling for development environment.
+- Plan 01-01 installed incompatible Fastify plugin versions (for Fastify 5.x) that required downgrading in 01-02. Future plugin installations should verify peer dependency compatibility.
 
 ## Session Continuity
 
-Last session: 2026-01-20T00:19:02Z (plan execution)
-Stopped at: Completed 01-01-PLAN.md (Backend Auth Infrastructure)
+Last session: 2026-01-20T00:27:22Z (plan execution)
+Stopped at: Completed 01-02-PLAN.md (Auth Routes Implementation)
 Resume file: None
-Next: Plan 01-02 or continue with remaining Phase 1 plans
+Next: Plan 01-03 or continue with remaining Phase 1 plans
