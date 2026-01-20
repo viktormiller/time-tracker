@@ -10,6 +10,7 @@ import { TempoCsvAdapter } from './adapters/tempo-csv.adapter';
 import authPlugin from './plugins/auth';
 import sessionPlugin from './plugins/session';
 import securityPlugin from './plugins/security';
+import authRoutes from './routes/auth.routes';
 
 const prisma = new PrismaClient();
 const app = Fastify({ logger: true });
@@ -27,6 +28,9 @@ app.register(authPlugin);
 app.register(sessionPlugin);
 
 // --- Routes ---
+
+// Auth routes (public - no authentication required)
+app.register(authRoutes);
 
 // 1. Get Aggregated Stats
 app.get('/api/stats', async (request, reply) => {
