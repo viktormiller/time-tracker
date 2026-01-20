@@ -122,6 +122,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     delete axios.defaults.headers.common['Authorization'];
   };
 
+  // Restore session on mount
+  useEffect(() => {
+    const restoreSession = async () => {
+      try {
+        // Try to refresh token (uses HttpOnly cookie)
+        const response = await axios.post(`${API_URL}/auth/refresh`);
+        const { accessToken: token } = response.data;
+
+        // Decode JWT payload to get user info
+        const payload = JSON.parse(atob(token.split('.')[1]));
+
+        setAccessToken(token);
+        setUser({
+          userId: payload.userId,
+          role: payload.role,
+        });
+
+        // Set default authorization header
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      } catch (error) {
+        // No valid session - stay logged out
+        console.log('No existing session found');
+      }
+    };
+
+    restoreSession();
+  }, []);
+
   // Setup global auth state reference for interceptor
   useEffect(() => {
     window.authState = {
