@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-01-19)
 ## Current Position
 
 Phase: 1 of 7 (Authentication & Security)
-Plan: 3 of 4 in phase complete
-Status: In progress
-Last activity: 2026-01-20 — Completed 01-03-PLAN.md (Frontend Auth Integration)
+Plan: 4 of 4 in phase complete
+Status: Phase complete
+Last activity: 2026-01-21 — Completed 01-04-PLAN.md (End-to-End Auth Verification)
 
-Progress: [██████░░░░] 75% (Phase 1: 3/4 plans)
+Progress: [██████████] 100% (Phase 1: 4/4 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 5 min
-- Total execution time: 0.25 hours
+- Total plans completed: 4
+- Average duration: 6.5 min
+- Total execution time: 0.43 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-authentication-a-security | 3/4 | 15 min | 5 min |
+| 01-authentication-a-security | 4/4 (complete) | 26 min | 6.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (6min), 01-02 (5min), 01-03 (4min)
-- Trend: Improving velocity (trending down from 6min to 4min)
+- Last 5 plans: 01-01 (6min), 01-02 (5min), 01-03 (4min), 01-04 (11min)
+- Trend: Verification plan longer due to debugging (6→5→4→11min)
 
 *Updated after each plan completion*
 
@@ -69,23 +69,30 @@ Recent decisions affecting current work:
 - Axios interceptor handles 401 responses globally with automatic refresh retry
 - Conditional rendering: show login form when not authenticated, dashboard when authenticated
 
+**From 01-04 (End-to-End Auth Verification):**
+- Rename auth.ts to auth.tsx for JSX support in AuthProvider
+- Add session restoration on page load to prevent re-login after refresh
+- Scope rate limiting to login endpoint only (5 req/15min) instead of global
+- Exclude refresh endpoint from rate limiting to prevent blocking token renewal
+- Use .env file for development secrets instead of shell exports
+
 ### Pending Todos
 
 None yet.
 
 ### Blockers/Concerns
 
-**From 01-02:**
-- Rate limiting (5 req/15min) is very aggressive and may trigger during development testing. Consider adjusting or disabling for development environment.
-- Plan 01-01 installed incompatible Fastify plugin versions (for Fastify 5.x) that required downgrading in 01-02. Future plugin installations should verify peer dependency compatibility.
+**Resolved in 01-04:**
+- ~~Rate limiting too aggressive~~ → Fixed: Scoped to login endpoint only
+- ~~Frontend loses auth on refresh~~ → Fixed: Session restoration on page load
+- ~~Refresh endpoint rate limited~~ → Fixed: Excluded from rate limiting
 
-**From 01-03:**
-- Frontend loses authentication on page refresh (access token in memory is lost). This is by design for security, but may want to add refresh-on-load logic to check if refresh token cookie is still valid.
-- CORS configuration in backend hardcodes frontend URL to localhost:5173 - may need adjustment if frontend port changes.
+**Open concerns:**
+- CORS configuration in backend hardcodes frontend URL to localhost:5173 - may need adjustment if frontend port changes or for production deployment.
 
 ## Session Continuity
 
-Last session: 2026-01-20T00:33:45Z (plan execution)
-Stopped at: Completed 01-03-PLAN.md (Frontend Auth Integration)
+Last session: 2026-01-21T00:38:16Z (plan execution)
+Stopped at: Completed 01-04-PLAN.md (End-to-End Auth Verification)
 Resume file: None
-Next: Plan 01-04 (final plan in Phase 1)
+Next: Phase 1 complete - ready for Phase 2 planning
