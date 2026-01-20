@@ -1,23 +1,27 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import axios from 'axios';
-import { 
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList, Cell 
+import {
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList, Cell
 } from 'recharts';
-import { 
-  Upload, Loader2, RefreshCw, Filter, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown, 
-  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers
+import {
+  Upload, Loader2, RefreshCw, Filter, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown,
+  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut
 } from 'lucide-react';
-import { 
-  format, parseISO, isSameDay, startOfToday, endOfToday, 
-  startOfWeek, endOfWeek, startOfMonth, endOfMonth, 
-  startOfQuarter, endOfQuarter, startOfYear, endOfYear, 
-  subWeeks, subMonths, isWithinInterval, addDays, addWeeks, addMonths, addQuarters, addYears, eachDayOfInterval, subDays 
+import {
+  format, parseISO, isSameDay, startOfToday, endOfToday,
+  startOfWeek, endOfWeek, startOfMonth, endOfMonth,
+  startOfQuarter, endOfQuarter, startOfYear, endOfYear,
+  subWeeks, subMonths, isWithinInterval, addDays, addWeeks, addMonths, addQuarters, addYears, eachDayOfInterval, subDays
 } from 'date-fns';
 import { de } from 'date-fns/locale';
 
 // FIX: 'type DateRange' verhindert den Absturz, da es nur eine Typ-Definition ist
 import { DayPicker, type DateRange } from 'react-day-picker';
 import 'react-day-picker/dist/style.css'; // Styles direkt hier importieren
+
+// Auth imports
+import { AuthProvider, useAuth } from './lib/auth';
+import LoginForm from './components/LoginForm';
 
 // --- TYPEN ---
 interface TimeEntry {
@@ -61,6 +65,21 @@ const getPresetRange = (preset: DatePreset): { start: Date, end: Date } | null =
 };
 
 function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+}
+
+function AppContent() {
+  const { isAuthenticated, logout } = useAuth();
+
+  // Show login form if not authenticated
+  if (!isAuthenticated) {
+    return <LoginForm />;
+  }
+
   // --- STATE ---
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -292,6 +311,17 @@ function App() {
             <h1 className="text-2xl font-bold text-gray-900">vihais Tracker</h1>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+               {/* LOGOUT BUTTON */}
+               <button
+                 onClick={logout}
+                 className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition text-sm font-medium"
+                 title="Logout"
+               >
+                 <LogOut size={18} />
+                 <span className="hidden md:inline">Logout</span>
+               </button>
+
+               <div className="h-8 w-px bg-gray-200 mx-1 hidden md:block"></div>
 
                {/* SYNC GROUP */}
               <div className="flex items-center rounded-lg border border-pink-200 bg-pink-50 p-0.5 mr-2">
