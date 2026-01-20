@@ -32,121 +32,165 @@ app.register(sessionPlugin);
 // Auth routes (public - no authentication required)
 app.register(authRoutes);
 
-// 1. Get Aggregated Stats
-app.get('/api/stats', async (request, reply) => {
-  // Simple aggregation: Group by date
-  // In a real app, you would add ?from=...&to=... query params here
-  const entries = await prisma.timeEntry.findMany({
-    orderBy: { date: 'desc' }
+// Protected API routes (require authentication)
+app.register(async (protectedRoutes) => {
+  // Apply authentication to ALL routes in this plugin
+  protectedRoutes.addHook('onRequest', app.authenticate);
+
+  // 1. Get Aggregated Stats
+  protectedRoutes.get('/stats', async (request, reply) => {
+    // Simple aggregation: Group by date
+    // In a real app, you would add ?from=...&to=... query params here
+    const entries = await prisma.timeEntry.findMany({
+      orderBy: { date: 'desc' }
+    });
+
+    return entries;
   });
 
-  return entries;
-});
+  // 2. Upload Endpoint
+  protectedRoutes.post('/upload', async (req, reply) => {
+    const data = await req.file();
+    if (!data) {
+      return reply.code(400).send({ error: 'No file uploaded' });
+    }
 
-// 2. Upload Endpoint
-app.post('/api/upload', async (req, reply) => {
-  const data = await req.file();
-  if (!data) {
-    return reply.code(400).send({ error: 'No file uploaded' });
-  }
+    const buffer = await data.toBuffer();
+    const fileContent = buffer.toString('utf-8');
+    const filename = data.filename.toLowerCase();
 
-  const buffer = await data.toBuffer();
-  const fileContent = buffer.toString('utf-8');
-  const filename = data.filename.toLowerCase();
+    let adapter;
 
-  let adapter;
-
-  // Simple strategy selection based on filename or content detection
-  if (filename.includes('toggl')) {
-    adapter = new TogglCsvAdapter();
-  } else if (filename.includes('report') && fileContent.includes('01/Dec')) {
-    // Basic heuristic for Tempo based on your file naming/content
-    adapter = new TempoCsvAdapter();
-  } else {
-    // Fallback detection logic could go here
-    // For now, default to Tempo if it looks like a matrix? 
-    // Let's assume explicit naming for safety first.
-    if(fileContent.includes('Issue,Key')) {
-        adapter = new TempoCsvAdapter();
+    // Simple strategy selection based on filename or content detection
+    if (filename.includes('toggl')) {
+      adapter = new TogglCsvAdapter();
+    } else if (filename.includes('report') && fileContent.includes('01/Dec')) {
+      // Basic heuristic for Tempo based on your file naming/content
+      adapter = new TempoCsvAdapter();
     } else {
-        return reply.code(400).send({ error: 'Unknown CSV format. Please rename file to include "toggl" or ensure Tempo format.' });
+      // Fallback detection logic could go here
+      // For now, default to Tempo if it looks like a matrix?
+      // Let's assume explicit naming for safety first.
+      if(fileContent.includes('Issue,Key')) {
+          adapter = new TempoCsvAdapter();
+      } else {
+          return reply.code(400).send({ error: 'Unknown CSV format. Please rename file to include "toggl" or ensure Tempo format.' });
+      }
     }
-  }
 
-  const result = await adapter.parse(fileContent);
+    const result = await adapter.parse(fileContent);
 
-  if (result.errors.length > 0) {
-    req.log.error(result.errors);
-  }
+    if (result.errors.length > 0) {
+      req.log.error(result.errors);
+    }
 
-  // Batch insert into Database
-  let count = 0;
-  for (const entry of result.entries) {
+    // Batch insert into Database
+    let count = 0;
+    for (const entry of result.entries) {
 
-    const extId = entry.externalId || `FALLBACK_${entry.source}_${entry.date.getTime()}_${Math.random()}`;
+      const extId = entry.externalId || `FALLBACK_${entry.source}_${entry.date.getTime()}_${Math.random()}`;
 
-    await prisma.timeEntry.upsert({
-        where: {
-            source_externalId: {
-                source: entry.source,
-                externalId: extId
-            }
-        },
-        update: {
-            // Wenn es den Eintrag schon gibt: Update machen (z.B. Description geändert?)
-            duration: entry.duration,
-            description: entry.description,
-            project: entry.project
-        },
-        create: {
-            source: entry.source,
-            externalId: extId,
-            date: entry.date,
-            duration: entry.duration,
-            project: entry.project,
-            description: entry.description
-        }
-    });
-    count++;
-  }
+      await prisma.timeEntry.upsert({
+          where: {
+              source_externalId: {
+                  source: entry.source,
+                  externalId: extId
+              }
+          },
+          update: {
+              // Wenn es den Eintrag schon gibt: Update machen (z.B. Description geändert?)
+              duration: entry.duration,
+              description: entry.description,
+              project: entry.project
+          },
+          create: {
+              source: entry.source,
+              externalId: extId,
+              date: entry.date,
+              duration: entry.duration,
+              project: entry.project,
+              description: entry.description
+          }
+      });
+      count++;
+    }
 
-  return { message: 'Import successful', imported: count, errors: result.errors };
-});
+    return { message: 'Import successful', imported: count, errors: result.errors };
+  });
 
-// Toggl Sync Route
-app.post<{ Querystring: { force: string }, Body: { startDate?: string, endDate?: string } }>('/api/sync/toggl', async (req, reply) => {
-    const force = req.query.force === 'true';
-    // Body parsen für Custom Dates
-    const { startDate, endDate } = req.body || {};
+  // Toggl Sync Route
+  protectedRoutes.post<{ Querystring: { force: string }, Body: { startDate?: string, endDate?: string } }>('/sync/toggl', async (req, reply) => {
+      const force = req.query.force === 'true';
+      // Body parsen für Custom Dates
+      const { startDate, endDate } = req.body || {};
 
-    console.log('[API Route] /sync/toggl called with body:', req.body);
+      console.log('[API Route] /sync/toggl called with body:', req.body);
 
-    const togglService = new TogglService(prisma);
+      const togglService = new TogglService(prisma);
+
+      try {
+          const result = await togglService.syncTogglEntries(force, startDate, endDate);
+          return result;
+      } catch (error) {
+          req.log.error(error);
+          return reply.code(500).send({ error: (error as Error).message });
+      }
+  });
+
+  // Tempo Sync Route
+  protectedRoutes.post<{ Querystring: { force: string }, Body: { startDate?: string, endDate?: string } }>('/sync/tempo', async (req, reply) => {
+      const force = req.query.force === 'true';
+      const { startDate, endDate } = req.body || {};
+
+      const tempoService = new TempoService(prisma);
+
+      try {
+          const result = await tempoService.syncTempoEntries(force, startDate, endDate);
+          return result;
+      } catch (error) {
+          req.log.error(error);
+          return reply.code(500).send({ error: (error as Error).message });
+      }
+  });
+
+  // Eintrag löschen
+  protectedRoutes.delete<{ Params: { id: string } }>('/entries/:id', async (req, reply) => {
+    const { id } = req.params;
+    try {
+      await prisma.timeEntry.delete({
+        where: { id },
+      });
+      return { success: true };
+    } catch (error) {
+      req.log.error(error);
+      return reply.code(500).send({ error: 'Could not delete entry' });
+    }
+  });
+
+  // Eintrag aktualisieren
+  protectedRoutes.put<{ Params: { id: string }; Body: { date: string; duration: number; project: string; description: string; source: string } }>('/entries/:id', async (req, reply) => {
+    const { id } = req.params;
+    const { date, duration, project, description, source } = req.body;
 
     try {
-        const result = await togglService.syncTogglEntries(force, startDate, endDate);
-        return result;
+      const updated = await prisma.timeEntry.update({
+        where: { id },
+        data: {
+          date: new Date(date), // String wieder in Date Objekt wandeln
+          duration: parseFloat(duration.toString()), // Sicherstellen, dass es eine Zahl ist
+          project,
+          description,
+          source
+        },
+      });
+      return updated;
     } catch (error) {
-        req.log.error(error);
-        return reply.code(500).send({ error: (error as Error).message });
+      req.log.error(error);
+      return reply.code(500).send({ error: 'Could not update entry' });
     }
-});
+  });
 
-// Tempo Sync Route
-app.post<{ Querystring: { force: string }, Body: { startDate?: string, endDate?: string } }>('/api/sync/tempo', async (req, reply) => {
-    const force = req.query.force === 'true';
-    const { startDate, endDate } = req.body || {};
-
-    const tempoService = new TempoService(prisma);
-
-    try {
-        const result = await tempoService.syncTempoEntries(force, startDate, endDate);
-        return result;
-    } catch (error) {
-        req.log.error(error);
-        return reply.code(500).send({ error: (error as Error).message });
-    }
-});
+}, { prefix: '/api' });
 
 // Start Server
 const start = async () => {
@@ -158,42 +202,5 @@ const start = async () => {
     process.exit(1);
   }
 };
-
-// Eintrag löschen
-app.delete<{ Params: { id: string } }>('/api/entries/:id', async (req, reply) => {
-  const { id } = req.params;
-  try {
-    await prisma.timeEntry.delete({
-      where: { id },
-    });
-    return { success: true };
-  } catch (error) {
-    req.log.error(error);
-    return reply.code(500).send({ error: 'Could not delete entry' });
-  }
-});
-
-// Eintrag aktualisieren
-app.put<{ Params: { id: string }; Body: { date: string; duration: number; project: string; description: string; source: string } }>('/api/entries/:id', async (req, reply) => {
-  const { id } = req.params;
-  const { date, duration, project, description, source } = req.body;
-
-  try {
-    const updated = await prisma.timeEntry.update({
-      where: { id },
-      data: {
-        date: new Date(date), // String wieder in Date Objekt wandeln
-        duration: parseFloat(duration.toString()), // Sicherstellen, dass es eine Zahl ist
-        project,
-        description,
-        source
-      },
-    });
-    return updated;
-  } catch (error) {
-    req.log.error(error);
-    return reply.code(500).send({ error: 'Could not update entry' });
-  }
-});
 
 start();
