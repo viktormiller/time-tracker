@@ -7,13 +7,24 @@ import cors from '@fastify/cors';
 import { PrismaClient } from '@prisma/client';
 import { TogglCsvAdapter } from './adapters/toggl-csv.adapter';
 import { TempoCsvAdapter } from './adapters/tempo-csv.adapter';
+import authPlugin from './plugins/auth';
+import sessionPlugin from './plugins/session';
+import securityPlugin from './plugins/security';
 
 const prisma = new PrismaClient();
 const app = Fastify({ logger: true });
 
 // Register plugins
-app.register(cors, { origin: '*' }); // Allow frontend dev server
+app.register(cors, {
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true // Required for cookies
+});
 app.register(multipart);
+
+// Security plugins
+app.register(securityPlugin);
+app.register(authPlugin);
+app.register(sessionPlugin);
 
 // --- Routes ---
 
