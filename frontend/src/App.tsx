@@ -27,6 +27,7 @@ import LoginForm from './components/LoginForm';
 import { TimezoneSelector } from './components/TimezoneSelector';
 import { ProjectCell } from './components/ProjectCell';
 import { getTimezone, setTimezone } from './lib/timezone';
+import { ThemeToggle } from './components/ThemeToggle';
 import { exportToCSV } from './lib/csv-export';
 
 // --- TYPEN ---
@@ -417,7 +418,7 @@ function AppContent() {
         </header>
 
         {/* CONTROLS */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-wrap items-center gap-4">
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-wrap items-center gap-4">
             {/* TOGGL-STYLE DATE PICKER */}
             <TogglDateRangePicker 
                 preset={datePreset} 
