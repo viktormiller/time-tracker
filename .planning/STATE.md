@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-19)
 ## Current Position
 
 Phase: 3 of 7 (Data Quality & PostgreSQL Migration) - IN PROGRESS
-Plan: 2 of 4 plans complete
+Plan: 2 of 4 plans complete (03-01, 03-02)
 Status: In progress
-Last activity: 2026-01-21 — Completed 03-02-PLAN.md (Tempo Service Enhancement)
+Last activity: 2026-01-21 — Completed 03-01-PLAN.md (Schema Migration)
 
-Progress: [████████░░] 80% (2/7 phases complete: Auth + Containerization)
+Progress: [█████████░] 87% (2 phases complete + 2/4 of phase 3)
 
 ## Performance Metrics
 
@@ -112,6 +112,14 @@ Recent decisions affecting current work:
 - Docker volume persistence verified with restart cycle testing
 - Browser verification catches UX issues not visible in curl tests
 
+**From 03-01 (Schema Migration):**
+- Use PostgreSQL native gen_random_uuid() for database-level UUID generation
+- Use TIMESTAMPTZ(6) for microsecond precision timezone-aware timestamps
+- Expose PostgreSQL port 5432 in development docker-compose for local migrations
+- Use pgloader for SQLite to PostgreSQL migration with automatic type conversion
+- Validate migration with count checks, null ID detection, and duplicate verification
+- PostgreSQL 17 has gen_random_uuid() built-in (no pgcrypto extension needed)
+
 **From 03-02 (Tempo Service Enhancement):**
 - Prioritize entry.issue.key over entry.issue.id for readable issue identifiers
 - Combine issue key with project name in format "KEY - Name" for better context
@@ -142,7 +150,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-21T03:35:24Z (plan execution)
-Stopped at: Completed 03-02-PLAN.md (Tempo Service Enhancement)
+Last session: 2026-01-21T03:36:41Z (plan execution)
+Stopped at: Completed 03-01-PLAN.md (Schema Migration)
 Resume file: None
-Next: Continue Phase 3 with plan 03-03 or 03-04
+Next: Continue Phase 3 with remaining plans (03-03, 03-04)
