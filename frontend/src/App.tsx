@@ -36,6 +36,7 @@ interface TimeEntry {
   project: string;
   description: string;
   source: string;
+  createdAt: string;
 }
 
 interface DailyStats {
@@ -282,7 +283,11 @@ function AppContent() {
         if (typeof valB === 'string') valB = valB.toLowerCase();
         if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
         if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
-        return 0;
+
+        // Secondary sort by createdAt (descending) when primary values are equal
+        const createdA = new Date(a.createdAt).getTime();
+        const createdB = new Date(b.createdAt).getTime();
+        return createdB - createdA; // Newer entries first
     });
     return data;
   }, [filteredEntries, sortConfig, selectedDay]);
