@@ -86,10 +86,13 @@ Plans:
   3. User can export filtered entries as CSV file
   4. User can export filtered entries with chart as PDF
   5. All components readable in both light and dark modes
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 04-01: TBD
+- [ ] 04-01-PLAN.md — Dark mode implementation (theme toggle, FOUC prevention, component styling)
+- [ ] 04-02-PLAN.md — CSV export (client-side generation with sanitization)
+- [ ] 04-03-PLAN.md — PDF export backend (Puppeteer service, API endpoint, Docker config)
+- [ ] 04-04-PLAN.md — PDF export frontend and end-to-end verification
 
 ### Phase 5: Manual Entry & Provider Abstraction
 **Goal**: Users can add entries directly and system is ready for new sources
@@ -139,14 +142,14 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Authentication & Security | 4/4 | ✓ Complete | 2026-01-21 |
-| 2. Containerization & Deployment | 4/4 | ✓ Complete | 2026-01-21 |
-| 3. Data Quality & PostgreSQL Migration | 4/4 | ✓ Complete | 2026-01-21 |
-| 4. UX Enhancements | 0/? | Not started | - |
+| 1. Authentication & Security | 4/4 | Complete | 2026-01-21 |
+| 2. Containerization & Deployment | 4/4 | Complete | 2026-01-21 |
+| 3. Data Quality & PostgreSQL Migration | 4/4 | Complete | 2026-01-21 |
+| 4. UX Enhancements | 0/4 | Planned | - |
 | 5. Manual Entry & Provider Abstraction | 0/? | Not started | - |
 | 6. CLI Tool | 0/? | Not started | - |
 | 7. Future Sources | 0/? | Not started | - |
