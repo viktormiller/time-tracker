@@ -5,3 +5,7 @@ backend/node_modules
 /backend/tempo_cache.json
 backend/prisma/dev.db
 backend/secrets/
+
+# Docker secrets (production credentials)
+docker/secrets/*
+!docker/secrets/.gitkeep
