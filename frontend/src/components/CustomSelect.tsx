@@ -1,20 +1,53 @@
-import TimezoneSelect from 'react-timezone-select';
+import Select, { components, type SingleValueProps, type OptionProps } from 'react-select';
 import { useTheme } from '../hooks/useTheme';
 
-interface Props {
+interface Option {
   value: string;
-  onChange: (timezone: string) => void;
+  label: string;
 }
 
-export function TimezoneSelector({ value, onChange }: Props) {
+interface CustomSelectProps {
+  value: string;
+  onChange: (value: string) => void;
+  options: Option[];
+  icon?: React.ReactNode;
+  width?: string;
+}
+
+const CustomSingleValue = (props: SingleValueProps<Option>) => (
+  <components.SingleValue {...props}>
+    {props.data.label}
+  </components.SingleValue>
+);
+
+const CustomOption = (props: OptionProps<Option>) => (
+  <components.Option {...props}>
+    {props.data.label}
+  </components.Option>
+);
+
+export function CustomSelect({ value, onChange, options, icon, width = 'w-40' }: CustomSelectProps) {
   const { effectiveTheme } = useTheme();
   const isDark = effectiveTheme === 'dark';
 
+  const selectedOption = options.find(opt => opt.value === value) || options[0];
+
   return (
-    <div className="w-52">
-      <TimezoneSelect
-        value={value}
-        onChange={(tz) => onChange(tz.value)}
+    <div className={`flex items-center gap-2 ${width}`}>
+      {icon && <div className="flex-shrink-0">{icon}</div>}
+      <Select<Option>
+        value={selectedOption}
+        onChange={(option) => {
+          if (option && !Array.isArray(option)) {
+            onChange(option.value);
+          }
+        }}
+        options={options}
+        isSearchable={false}
+        components={{
+          SingleValue: CustomSingleValue,
+          Option: CustomOption,
+        }}
         styles={{
           control: (base) => ({
             ...base,
@@ -28,6 +61,7 @@ export function TimezoneSelector({ value, onChange }: Props) {
             paddingLeft: '0.75rem',
             paddingRight: '0.5rem',
             boxShadow: 'none',
+            cursor: 'pointer',
             '&:hover': {
               borderColor: isDark ? '#6b7280' : '#d1d5db',
             },
@@ -83,17 +117,8 @@ export function TimezoneSelector({ value, onChange }: Props) {
             fontSize: '0.875rem',
             lineHeight: '1.25rem',
           }),
-          input: (base) => ({
-            ...base,
-            color: isDark ? '#e5e7eb' : '#374151',
-            fontSize: '0.875rem',
-            margin: '0',
-            padding: '0',
-          }),
         }}
       />
     </div>
   );
 }
-
-export default TimezoneSelector;

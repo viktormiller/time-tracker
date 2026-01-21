@@ -30,6 +30,7 @@ import { getTimezone, setTimezone } from './lib/timezone';
 import { ThemeToggle } from './components/ThemeToggle';
 import { useTheme } from './hooks/useTheme';
 import { exportToCSV } from './lib/csv-export';
+import { CustomSelect } from './components/CustomSelect';
 
 // --- TYPEN ---
 interface TimeEntry {
@@ -493,20 +494,26 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
 
             <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
 
-            <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 px-3 py-2.5 rounded-lg text-sm text-gray-700 dark:text-gray-200">
-                <Filter size={16} className="text-gray-400 dark:text-gray-500" />
-                <select value={filterSource} onChange={(e) => setFilterSource(e.target.value)} className="bg-transparent border-none focus:ring-0 p-0 w-[110px] dark:text-gray-200">
-                    <option value="ALL">Alle Quellen</option>
-                    <option value="TOGGL">Toggl</option>
-                    <option value="TEMPO">Tempo</option>
-                </select>
-            </div>
-            <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 px-3 py-2.5 rounded-lg text-sm text-gray-700 dark:text-gray-200">
-                <select value={filterProject} onChange={(e) => setFilterProject(e.target.value)} className="bg-transparent border-none focus:ring-0 p-0 w-[140px] dark:text-gray-200">
-                    <option value="ALL">Alle Projekte</option>
-                    {uniqueProjects.map(proj => <option key={proj} value={proj}>{proj}</option>)}
-                </select>
-            </div>
+            <CustomSelect
+                value={filterSource}
+                onChange={setFilterSource}
+                options={[
+                    { value: 'ALL', label: 'Alle Quellen' },
+                    { value: 'TOGGL', label: 'Toggl' },
+                    { value: 'TEMPO', label: 'Tempo' },
+                ]}
+                icon={<Filter size={16} className="text-gray-400 dark:text-gray-500" />}
+                width="w-44"
+            />
+            <CustomSelect
+                value={filterProject}
+                onChange={setFilterProject}
+                options={[
+                    { value: 'ALL', label: 'Alle Projekte' },
+                    ...uniqueProjects.map(proj => ({ value: proj, label: proj })),
+                ]}
+                width="w-48"
+            />
             {(filterSource !== 'ALL' || filterProject !== 'ALL' || datePreset !== 'MONTH') && (
                 <button onClick={() => { setFilterSource('ALL'); setFilterProject('ALL'); handlePresetChange('MONTH'); }} className="flex items-center gap-1 text-sm text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 ml-auto">
                     <XCircle size={16} /> Reset
