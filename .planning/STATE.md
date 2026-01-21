@@ -12,7 +12,7 @@ See: .planning/PROJECT.md (updated 2026-01-19)
 Phase: 2 of 7 (Containerization & Deployment)
 Plan: 2 of 4 in phase complete
 Status: In progress
-Last activity: 2026-01-21 — Completed 02-02-PLAN.md (Frontend Dockerfile, Nginx Config)
+Last activity: 2026-01-21 — Completed 02-01-PLAN.md (Backend Containerization), 02-02-PLAN.md (Frontend Containerization)
 
 Progress: [███░░░░░░░] 25% (Phase 2: 2/4 plans complete)
 
@@ -28,10 +28,10 @@ Progress: [███░░░░░░░] 25% (Phase 2: 2/4 plans complete)
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-authentication-a-security | 4/4 (complete) | 26 min | 6.5 min |
-| 02-containerization-a-deployment | 2/4 (in progress) | 2 min | 1.0 min |
+| 02-containerization-a-deployment | 2/4 (in progress) | 3 min | 1.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-02 (5min), 01-03 (4min), 01-04 (11min), 02-01 (1min), 02-02 (1min)
+- Last 5 plans: 01-03 (4min), 01-04 (11min), 02-01 (2min), 02-02 (1min)
 - Trend: Containerization plans faster (simple config files vs debugging)
 
 *Updated after each plan completion*
@@ -77,6 +77,14 @@ Recent decisions affecting current work:
 - Exclude refresh endpoint from rate limiting to prevent blocking token renewal
 - Use .env file for development secrets instead of shell exports
 
+**From 02-01 (Backend Containerization):**
+- Use node:22-slim instead of Alpine for bcrypt native binding compatibility
+- Health endpoint performs database connectivity check (SELECT 1) at /health
+- PostgreSQL configuration requires DATABASE_URL environment variable
+- Docker CMD runs prisma migrate deploy before starting server
+- Multi-stage builds: builder stage compiles, production stage runs
+- Non-root user execution (USER node) for security
+
 **From 02-02 (Frontend Containerization):**
 - Use node:22-alpine for build stage (frontend has no native modules)
 - Use nginx:alpine for serve stage (lightweight production web server)
@@ -99,10 +107,11 @@ None yet.
 
 **Open concerns:**
 - CORS configuration in backend hardcodes frontend URL to localhost:5173 - may need adjustment if frontend port changes or for production deployment.
+- Local development currently broken after 02-01 (needs DATABASE_URL or SQLite fallback) - will be resolved in docker-compose plan.
 
 ## Session Continuity
 
-Last session: 2026-01-21T00:05:37Z (plan execution)
-Stopped at: Completed 02-02-PLAN.md (Frontend Dockerfile, Nginx Config)
+Last session: 2026-01-21T00:06:47Z (plan execution)
+Stopped at: Completed 02-01-PLAN.md (Backend Containerization)
 Resume file: None
 Next: Plan 02-03 (Docker Compose orchestration and secrets management)
