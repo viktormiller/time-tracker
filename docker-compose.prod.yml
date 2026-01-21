@@ -1,0 +1,39 @@
+services:
+  db:
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+
+  backend:
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://timetracker:DOCKER-SECRET@db:5432/timetracker
+    secrets:
+      - jwt_secret
+      - session_secret
+      - admin_password_hash
+      - db_password
+    # Override to read db_password from secret at runtime
+    command: >
+      sh -c "
+        DB_PASS=$$(cat /run/secrets/db_password) &&
+        export DATABASE_URL=postgresql://timetracker:$$DB_PASS@db:5432/timetracker &&
+        npx prisma migrate deploy &&
+        node dist/server.js
+      "
+
+  frontend:
+    ports:
+      - "80:80"
+      - "443:443"
+
+secrets:
+  jwt_secret:
+    file: ./docker/secrets/jwt_secret
+  session_secret:
+    file: ./docker/secrets/session_secret
+  admin_password_hash:
+    file: ./docker/secrets/admin_password_hash
+  db_password:
+    file: ./docker/secrets/db_password
