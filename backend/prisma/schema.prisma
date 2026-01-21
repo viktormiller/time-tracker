@@ -10,17 +10,17 @@ datasource db {
 
 // Unified model for all time entries
 model TimeEntry {
-  id          String   @id @default(uuid())
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   source      String   // "TOGGL" | "TEMPO" | "API_..."
   externalId  String?  // Optional ID from external system
-  date        DateTime // The actual date of work
+  date        DateTime @db.Timestamptz(6) // The actual date of work
   duration    Float    // Duration in hours (decimal)
   project     String?  // e.g. "forHim" or "WEKA-199"
   description String?  // Task description
-  createdAt   DateTime @default(now())
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
 
   // Kombinierter Unique Index
   // Ein Eintrag ist eindeutig durch seine Quelle und seine externe ID.
-  @@unique([source, externalId]) 
+  @@unique([source, externalId])
   @@index([date])
 }
