@@ -68,10 +68,13 @@ Plans:
   3. DateTime fields preserve timezone information (TIMESTAMPTZ)
   4. Concurrent sync operations don't cause duplicate ID conflicts
   5. Tempo entries display readable Jira issue keys (e.g., ABC-27)
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 03-01: TBD
+- [ ] 03-01-PLAN.md — Schema migration (TIMESTAMPTZ, database-level UUIDs, pgloader migration script)
+- [ ] 03-02-PLAN.md — Tempo service enhancement (issue key display, collision handling, Jira config)
+- [ ] 03-03-PLAN.md — Frontend enhancements (timezone selector, relative timestamps, clickable Jira links)
+- [ ] 03-04-PLAN.md — End-to-end verification (migration validation, concurrent sync tests, UI verification)
 
 ### Phase 4: UX Enhancements
 **Goal**: Users can customize theme and export their data
@@ -142,7 +145,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 |-------|----------------|--------|-----------|
 | 1. Authentication & Security | 4/4 | ✓ Complete | 2026-01-21 |
 | 2. Containerization & Deployment | 4/4 | ✓ Complete | 2026-01-21 |
-| 3. Data Quality & PostgreSQL Migration | 0/? | Not started | - |
+| 3. Data Quality & PostgreSQL Migration | 0/4 | Planned | - |
 | 4. UX Enhancements | 0/? | Not started | - |
 | 5. Manual Entry & Provider Abstraction | 0/? | Not started | - |
 | 6. CLI Tool | 0/? | Not started | - |
