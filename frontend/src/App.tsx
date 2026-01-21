@@ -485,7 +485,7 @@ function AppContent() {
                   <tbody className="divide-y divide-gray-100">
                       {tableEntries.map((entry) => (
                           <tr key={entry.id} className="hover:bg-gray-50 transition-colors group">
-                              <td className="px-6 py-3 text-gray-600">{format(parseISO(entry.date), 'EE dd.MM.yyyy', { locale: de })}</td>
+                              <td className="px-6 py-3 text-gray-600">{format(parseISO(entry.date), 'EE dd.MM.yyyy HH:mm', { locale: de })}</td>
                               <td className="px-6 py-3"><span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${entry.source === 'TOGGL' ? 'bg-pink-100 text-pink-800' : 'bg-blue-100 text-blue-800'}`}>{entry.source}</span></td>
                               <td className="px-6 py-3">
                                 <ProjectCell
