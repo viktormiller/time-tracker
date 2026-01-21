@@ -1,6 +1,10 @@
 # Stage 1: Build
 FROM node:23-alpine AS builder
 WORKDIR /app
+
+# Upgrade npm to version 11 for lock file compatibility
+RUN npm install -g npm@latest
+
 COPY package*.json ./
 RUN npm ci
 COPY . .
