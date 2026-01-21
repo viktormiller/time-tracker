@@ -15,28 +15,40 @@ interface AuthContextType {
 // Create auth context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Global flag to prevent infinite refresh loops
+let isRefreshing = false;
+
 // Configure axios interceptor for automatic token refresh
 axios.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
+    // Extract the URL path from the request (handle both relative and absolute URLs)
+    const requestPath = originalRequest.url || '';
+    const isRefreshEndpoint = requestPath.includes('/auth/refresh');
+    const isLoginEndpoint = requestPath.includes('/auth/login');
+    const isLogoutEndpoint = requestPath.includes('/auth/logout');
+
     // Don't retry if:
     // 1. Not a 401 error
     // 2. Already retried this request
     // 3. The failing request was the refresh endpoint itself (prevents infinite loop)
     // 4. The failing request was login or logout
+    // 5. Already in the middle of a refresh operation
     if (
       error.response?.status !== 401 ||
       originalRequest._retry ||
-      originalRequest.url?.includes('/api/auth/refresh') ||
-      originalRequest.url?.includes('/api/auth/login') ||
-      originalRequest.url?.includes('/api/auth/logout')
+      isRefreshEndpoint ||
+      isLoginEndpoint ||
+      isLogoutEndpoint ||
+      isRefreshing
     ) {
       return Promise.reject(error);
     }
 
     originalRequest._retry = true;
+    isRefreshing = true;
 
     try {
       // Try to refresh the token (uses HttpOnly cookie)
@@ -57,6 +69,8 @@ axios.interceptors.response.use(
         window.authState.handleLogout();
       }
       return Promise.reject(refreshError);
+    } finally {
+      isRefreshing = false;
     }
   }
 );
