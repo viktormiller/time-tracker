@@ -351,8 +351,8 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | REQ-001 | Phase 1 | Complete |
-| REQ-002 | Phase 2 | Pending |
-| REQ-003 | Phase 2 | Pending |
+| REQ-002 | Phase 2 | Complete |
+| REQ-003 | Phase 2 | Complete |
 | REQ-004 | Phase 3 | Pending |
 | REQ-005 | Phase 3 | Pending |
 | REQ-006 | Phase 4 | Pending |
