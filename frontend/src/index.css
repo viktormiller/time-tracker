@@ -32,6 +32,18 @@ body {
   color: #e5e7eb; /* Gray-200 */
 }
 
+.dark .rdp-months {
+  background-color: #374151; /* Gray-700 - matches dropdown background */
+}
+
+.dark .rdp-month {
+  background-color: #374151; /* Gray-700 */
+}
+
+.dark .rdp-table {
+  background-color: #374151; /* Gray-700 */
+}
+
 .dark .rdp-caption {
   color: #f3f4f6; /* Gray-100 */
 }
@@ -49,7 +61,7 @@ body {
 }
 
 .dark .rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
-  background-color: #374151; /* Gray-700 */
+  background-color: #4b5563; /* Gray-600 - slightly lighter for hover */
 }
 
 .dark .rdp-day_today:not(.rdp-day_selected) {
