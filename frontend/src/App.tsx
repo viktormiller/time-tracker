@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import {
   Upload, Loader2, RefreshCw, Filter, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown,
-  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut
+  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut, Download
 } from 'lucide-react';
 import {
   format, parseISO, isSameDay, startOfToday, endOfToday,
@@ -27,6 +27,7 @@ import LoginForm from './components/LoginForm';
 import { TimezoneSelector } from './components/TimezoneSelector';
 import { ProjectCell } from './components/ProjectCell';
 import { getTimezone, setTimezone } from './lib/timezone';
+import { exportToCSV } from './lib/csv-export';
 
 // --- TYPEN ---
 interface TimeEntry {
@@ -306,6 +307,14 @@ function AppContent() {
   const uniqueProjects = useMemo(() => Array.from(new Set(entries.map(e => e.project).filter(Boolean))).sort(), [entries]);
 
   const handleSort = (key: SortKey) => setSortConfig(current => ({ key, direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc' }));
+
+  const handleExportCSV = () => {
+    if (filteredEntries.length === 0) {
+      alert('Keine Einträge zum Exportieren vorhanden.');
+      return;
+    }
+    exportToCSV(filteredEntries, dateRange);
+  };
   
   const handleBarClick = (data: any) => {
     let clickedDateStr: string | null = null;
@@ -388,6 +397,13 @@ function AppContent() {
 
               <div className="h-8 w-px bg-gray-200 mx-1 hidden md:block"></div>
               <button onClick={fetchData} className="p-2.5 text-gray-600 hover:bg-gray-100 rounded-lg transition"><RefreshCw size={20} className={loading ? "animate-spin" : ""} /></button>
+              <button
+                onClick={handleExportCSV}
+                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-sm text-sm"
+              >
+                <Download size={16} />
+                CSV Export
+              </button>
               <div className="relative">
                   <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" className="hidden" />
                   <button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-sm disabled:opacity-50 text-sm">
