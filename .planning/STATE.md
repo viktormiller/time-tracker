@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-19)
 
 **Core value:** See all worked hours in one place — regardless of which system tracked them.
-**Current focus:** Phase 2: Containerization & Deployment (complete) → Phase 3: Data Quality & PostgreSQL Migration
+**Current focus:** Phase 3: Data Quality & PostgreSQL Migration (complete) → Phase 4: UX Enhancements
 
 ## Current Position
 
-Phase: 3 of 7 (Data Quality & PostgreSQL Migration) - IN PROGRESS
-Plan: 3 of 4 plans complete (03-01, 03-02, 03-03)
-Status: In progress
-Last activity: 2026-01-21 — Completed 03-03-PLAN.md (Frontend Enhancements)
+Phase: 3 of 7 (Data Quality & PostgreSQL Migration) - COMPLETE
+Plan: All 4 plans in phase complete
+Status: Phase verified and complete
+Last activity: 2026-01-21 — Verified phase 3 goal achievement
 
-Progress: [█████████░] 90% (2 phases complete + 3/4 of phase 3)
+Progress: [██████████] 100% (3/7 phases complete: Auth + Containerization + Data Quality)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
-- Average duration: 4.9 min
-- Total execution time: 0.92 hours
+- Total plans completed: 12
+- Average duration: 6.3 min
+- Total execution time: 1.27 hours
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [█████████░] 90% (2 phases complete + 3/4 of phase
 |-------|-------|-------|----------|
 | 01-authentication-a-security | 4/4 (complete) | 26 min | 6.5 min |
 | 02-containerization-a-deployment | 4/4 (complete) | 31 min | 7.8 min |
-| 03-data-quality-postgresql-migration | 3/4 (in progress) | 5 min | 1.7 min |
+| 03-data-quality-postgresql-migration | 4/4 (complete) | 35 min | 8.8 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-03 (3min), 02-04 (25min), 03-01 (1min), 03-02 (1min), 03-03 (3min)
-- Trend: Data quality plans very fast (simple code changes), verification plans much longer
+- Last 5 plans: 02-04 (25min), 03-01 (3min), 03-02 (1min), 03-03 (3min), 03-04 (30min)
+- Trend: Verification plans take longer than implementation plans
 
 *Updated after each plan completion*
 
@@ -135,19 +135,26 @@ Recent decisions affecting current work:
 - Extract issue key from project string format "KEY-123 - Project Name"
 - React 19 uses new JSX transform (no explicit React import needed)
 
+**From 03-04 (End-to-End Verification):**
+- Display time in date column for transparency (users can see exact timestamps)
+- Use externalId as secondary sort key (matches chronological order from APIs)
+- Create root .env file for Docker Compose environment variables
+- Set /app directory ownership to node user before switching to non-root
+- Tempo entries show 09:00 time (expected - Tempo API only provides dates)
+- Sorting: Primary by date+time desc, secondary by externalId desc, fallback by createdAt desc
+
 ### Pending Todos
 
 None yet.
 
 ### Blockers/Concerns
 
+**All blockers resolved.**
+
 **Resolved in 01-04:**
 - ~~Rate limiting too aggressive~~ → Fixed: Scoped to login endpoint only
 - ~~Frontend loses auth on refresh~~ → Fixed: Session restoration on page load
 - ~~Refresh endpoint rate limited~~ → Fixed: Excluded from rate limiting
-
-**Open concerns:**
-- CORS configuration in backend hardcodes frontend URL to localhost:5173 - may need adjustment if frontend port changes or for production deployment.
 
 **Resolved in 02-03:**
 - ~~Local development currently broken after 02-01 (needs DATABASE_URL or SQLite fallback)~~ → Fixed: docker-compose.yml provides PostgreSQL with DATABASE_URL
@@ -155,9 +162,16 @@ None yet.
 **Resolved in 02-04:**
 - ~~Infinite 401 refresh loop after logout or in incognito mode~~ → Fixed: Added isRefreshing flag to prevent concurrent refresh attempts
 
+**Resolved in 03-04:**
+- ~~Timezone selector not visible~~ → Fixed: Frontend container rebuild
+- ~~API tokens not loading~~ → Fixed: Created root .env + updated docker-compose.yml
+- ~~Cache permission errors~~ → Fixed: Updated Dockerfile permissions
+- ~~Time not displaying in date column~~ → Fixed: Changed format to include HH:mm
+- ~~Entry order incorrect~~ → Fixed: Added secondary sort by externalId
+
 ## Session Continuity
 
-Last session: 2026-01-21T03:44:35Z (plan execution)
-Stopped at: Completed 03-03-PLAN.md (Frontend Enhancements)
+Last session: 2026-01-21T04:35:00Z (plan execution)
+Stopped at: Completed 03-04-PLAN.md (End-to-End Data Quality Verification)
 Resume file: None
-Next: Continue Phase 3 with final plan (03-04)
+Next: Phase 3 complete - ready for Phase 4 (UX Enhancements)

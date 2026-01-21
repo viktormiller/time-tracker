@@ -353,12 +353,12 @@
 | REQ-001 | Phase 1 | Complete |
 | REQ-002 | Phase 2 | Complete |
 | REQ-003 | Phase 2 | Complete |
-| REQ-004 | Phase 3 | Pending |
-| REQ-005 | Phase 3 | Pending |
+| REQ-004 | Phase 3 | Complete |
+| REQ-005 | Phase 3 | Complete |
 | REQ-006 | Phase 4 | Pending |
 | REQ-007 | Phase 4 | Pending |
 | REQ-008 | Phase 4 | Pending |
-| REQ-009 | Phase 3 | Pending |
+| REQ-009 | Phase 3 | Complete |
 | REQ-010 | Phase 5 | Pending |
 | REQ-011 | Phase 6 | Pending |
 | REQ-012 | Phase 6 | Pending |
