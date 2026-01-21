@@ -144,6 +144,13 @@ Recent decisions affecting current work:
 - Tempo entries show 09:00 time (expected - Tempo API only provides dates)
 - Sorting: Primary by date+time desc, secondary by externalId desc, fallback by createdAt desc
 
+**From 04-02 (CSV Export):**
+- Sanitize CSV fields starting with =, +, -, @ by prefixing with single quote to prevent formula injection
+- Use German column headers (Datum, Stunden, Quelle, Beschreibung, Projekt) matching UI language
+- Include date range in filename: timetracker-YYYY-MM-DD-to-YYYY-MM-DD.csv
+- Alert user when no entries available instead of downloading empty CSV
+- Green button styling for export (vs indigo for import) for visual differentiation
+
 **From 04-03 (Backend PDF Generation):**
 - Use Puppeteer for server-side PDF generation (better quality than client-side solutions)
 - Use system Chromium in Docker instead of bundled version (smaller image size, saves ~170MB)
@@ -180,14 +187,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-21T04:35:00Z (plan execution)
-Stopped at: Completed 03-04-PLAN.md (End-to-End Data Quality Verification)
+Last session: 2026-01-21T05:39:25Z (plan execution)
+Stopped at: Completed 04-03-PLAN.md (Backend PDF Generation Service)
 Resume file: None
-Next: Phase 3 complete - ready for Phase 4 (UX Enhancements)
-
-**From 04-02 (CSV Export):**
-- Sanitize CSV fields starting with =, +, -, @ by prefixing with single quote to prevent formula injection
-- Use German column headers (Datum, Stunden, Quelle, Beschreibung, Projekt) matching UI language
-- Include date range in filename: timetracker-YYYY-MM-DD-to-YYYY-MM-DD.csv
-- Alert user when no entries available instead of downloading empty CSV
-- Green button styling for export (vs indigo for import) for visual differentiation
+Next: 04-04 final plan in Phase 4 (UX Enhancements verification)
