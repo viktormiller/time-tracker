@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import {
   Upload, Loader2, RefreshCw, Filter, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown,
-  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut, Download
+  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut, Download, FileText
 } from 'lucide-react';
 import {
   format, parseISO, isSameDay, startOfToday, endOfToday,
@@ -98,6 +98,7 @@ function AppContent() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   
   // Filter & UI States
   const [filterSource, setFilterSource] = useState<string>('ALL');
@@ -320,6 +321,51 @@ function AppContent() {
     }
     exportToCSV(filteredEntries, dateRange);
   };
+
+  const handleExportPDF = async () => {
+    if (filteredEntries.length === 0) {
+      alert('Keine Einträge zum Exportieren vorhanden.');
+      return;
+    }
+
+    setExportingPdf(true);
+    try {
+      const response = await axios.post(
+        `${API_URL}/export/pdf`,
+        {
+          entries: filteredEntries.map(e => ({
+            date: e.date,
+            duration: e.duration,
+            project: e.project,
+            description: e.description,
+            source: e.source
+          })),
+          dateRange: {
+            from: format(dateRange.start, 'yyyy-MM-dd'),
+            to: format(dateRange.end, 'yyyy-MM-dd')
+          },
+          totalHours: filteredEntries.reduce((sum, e) => sum + e.duration, 0)
+        },
+        { responseType: 'blob' }
+      );
+
+      // Create download link
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `timetracker-${format(dateRange.start, 'yyyy-MM-dd')}-to-${format(dateRange.end, 'yyyy-MM-dd')}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('PDF export failed:', error);
+      alert('PDF Export fehlgeschlagen. Bitte versuchen Sie es erneut.');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
   
   const handleBarClick = (data: any) => {
     let clickedDateStr: string | null = null;
@@ -411,6 +457,14 @@ function AppContent() {
               >
                 <Download size={16} />
                 CSV Export
+              </button>
+              <button
+                onClick={handleExportPDF}
+                disabled={exportingPdf}
+                className="flex items-center gap-2 bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-sm disabled:opacity-50 text-sm"
+              >
+                {exportingPdf ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
+                PDF Export
               </button>
               <div className="relative">
                   <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" className="hidden" />
