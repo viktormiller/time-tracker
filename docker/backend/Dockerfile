@@ -35,6 +35,9 @@ COPY --from=builder --chown=node:node /app/package.json ./package.json
 # Set production environment
 ENV NODE_ENV=production
 
+# Create cache directory with proper permissions
+RUN mkdir -p /app/cache && chown -R node:node /app
+
 # Use non-root user
 USER node
 
