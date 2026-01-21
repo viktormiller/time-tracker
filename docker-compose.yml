@@ -41,6 +41,8 @@ services:
       ADMIN_PASSWORD_HASH: "$$2b$$12$$BIvSHp6cvICliq28CkdsuO/W.LiqrtSvqGBiKyZeh7rDsbt54eGEq"
       FRONTEND_URL: http://localhost
       JIRA_BASE_URL: ${JIRA_BASE_URL:-}
+      TEMPO_API_TOKEN: ${TEMPO_API_TOKEN:-}
+      TOGGL_API_TOKEN: ${TOGGL_API_TOKEN:-}
     networks:
       - backend-network
       - frontend-network
