@@ -8,6 +8,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+    ports:
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
@@ -38,6 +40,7 @@ services:
       SESSION_SECRET: 63bf0e22d987ede71fbf223d38ff0de0c0422c8533a2201925ad377eb9c85c3e
       ADMIN_PASSWORD_HASH: "$$2b$$12$$BIvSHp6cvICliq28CkdsuO/W.LiqrtSvqGBiKyZeh7rDsbt54eGEq"
       FRONTEND_URL: http://localhost
+      JIRA_BASE_URL: ${JIRA_BASE_URL:-}
     networks:
       - backend-network
       - frontend-network
