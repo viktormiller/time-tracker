@@ -363,6 +363,9 @@ function AppContent() {
                  <TimezoneSelector value={timezone} onChange={handleTimezoneChange} />
                </div>
 
+               {/* THEME TOGGLE */}
+               <ThemeToggle />
+
                <div className="h-8 w-px bg-gray-200 mx-1 hidden md:block"></div>
 
                {/* LOGOUT BUTTON */}
