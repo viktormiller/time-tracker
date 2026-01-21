@@ -9,19 +9,19 @@ See: .planning/PROJECT.md (updated 2026-01-19)
 
 ## Current Position
 
-Phase: 3 of 7 (Data Quality & PostgreSQL Migration) - COMPLETE
-Plan: All 4 plans in phase complete
-Status: Phase verified and complete
-Last activity: 2026-01-21 — Verified phase 3 goal achievement
+Phase: 4 of 7 (UX Enhancements) - IN PROGRESS
+Plan: 3 of 4 plans complete
+Status: Implementing phase
+Last activity: 2026-01-21 — Completed 04-03-PLAN.md
 
-Progress: [██████████] 100% (3/7 phases complete: Auth + Containerization + Data Quality)
+Progress: [███████████░░░] 57% (13/23 total plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12
-- Average duration: 6.3 min
-- Total execution time: 1.27 hours
+- Total plans completed: 13
+- Average duration: 6.0 min
+- Total execution time: 1.32 hours
 
 **By Phase:**
 
@@ -30,10 +30,11 @@ Progress: [██████████] 100% (3/7 phases complete: Auth + Con
 | 01-authentication-a-security | 4/4 (complete) | 26 min | 6.5 min |
 | 02-containerization-a-deployment | 4/4 (complete) | 31 min | 7.8 min |
 | 03-data-quality-postgresql-migration | 4/4 (complete) | 35 min | 8.8 min |
+| 04-ux-enhancements | 3/4 (in progress) | 3 min | 1.0 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-04 (25min), 03-01 (3min), 03-02 (1min), 03-03 (3min), 03-04 (30min)
-- Trend: Verification plans take longer than implementation plans
+- Last 5 plans: 03-01 (3min), 03-02 (1min), 03-03 (3min), 03-04 (30min), 04-03 (3min)
+- Trend: Implementation plans fast, verification plans take longer
 
 *Updated after each plan completion*
 
@@ -143,6 +144,14 @@ Recent decisions affecting current work:
 - Tempo entries show 09:00 time (expected - Tempo API only provides dates)
 - Sorting: Primary by date+time desc, secondary by externalId desc, fallback by createdAt desc
 
+**From 04-03 (Backend PDF Generation):**
+- Use Puppeteer for server-side PDF generation (better quality than client-side solutions)
+- Use system Chromium in Docker instead of bundled version (smaller image size, saves ~170MB)
+- German locale for date formatting using date-fns with de locale
+- HTML inline styles for PDF compatibility (no external CSS)
+- Escape HTML in user content to prevent XSS in PDF generation
+- Fastify logger object-first format: `fastify.log.error({ error }, 'message')`
+
 ### Pending Todos
 
 None yet.
@@ -175,3 +184,10 @@ Last session: 2026-01-21T04:35:00Z (plan execution)
 Stopped at: Completed 03-04-PLAN.md (End-to-End Data Quality Verification)
 Resume file: None
 Next: Phase 3 complete - ready for Phase 4 (UX Enhancements)
+
+**From 04-02 (CSV Export):**
+- Sanitize CSV fields starting with =, +, -, @ by prefixing with single quote to prevent formula injection
+- Use German column headers (Datum, Stunden, Quelle, Beschreibung, Projekt) matching UI language
+- Include date range in filename: timetracker-YYYY-MM-DD-to-YYYY-MM-DD.csv
+- Alert user when no entries available instead of downloading empty CSV
+- Green button styling for export (vs indigo for import) for visual differentiation
