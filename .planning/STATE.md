@@ -10,29 +10,29 @@ See: .planning/PROJECT.md (updated 2026-01-19)
 ## Current Position
 
 Phase: 2 of 7 (Containerization & Deployment)
-Plan: 3 of 4 in phase complete
-Status: In progress
-Last activity: 2026-01-21 — Completed 02-03-PLAN.md (Docker Compose Orchestration)
+Plan: 4 of 4 in phase complete
+Status: Phase complete
+Last activity: 2026-01-21 — Completed 02-04-PLAN.md (End-to-End Docker Stack Verification)
 
-Progress: [████░░░░░░] 38% (Phase 2: 3/4 plans complete)
+Progress: [█████░░░░░] 47% (Phase 2: 4/4 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: 4.4 min
-- Total execution time: 0.52 hours
+- Total plans completed: 8
+- Average duration: 6.0 min
+- Total execution time: 0.85 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-authentication-a-security | 4/4 (complete) | 26 min | 6.5 min |
-| 02-containerization-a-deployment | 3/4 (in progress) | 6 min | 2.0 min |
+| 02-containerization-a-deployment | 4/4 (complete) | 31 min | 7.8 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-04 (11min), 02-01 (2min), 02-02 (1min), 02-03 (3min)
-- Trend: Containerization plans very fast (simple config files vs debugging)
+- Last 5 plans: 02-01 (2min), 02-02 (1min), 02-03 (3min), 02-04 (25min)
+- Trend: Verification/debugging plans take longer than config-only plans
 
 *Updated after each plan completion*
 
@@ -104,6 +104,13 @@ Recent decisions affecting current work:
 - Secret generation: openssl rand for crypto-secure random values
 - Admin password: user-provided, bcrypt-hashed via Node.js
 
+**From 02-04 (End-to-End Docker Stack Verification):**
+- Generate bcrypt password hash inside running container to avoid escaping issues
+- Add isRefreshing global flag to prevent infinite auth refresh loops
+- Skip interceptor retry for all /auth/* endpoints to break refresh cycles
+- Docker volume persistence verified with restart cycle testing
+- Browser verification catches UX issues not visible in curl tests
+
 ### Pending Todos
 
 None yet.
@@ -121,9 +128,12 @@ None yet.
 **Resolved in 02-03:**
 - ~~Local development currently broken after 02-01 (needs DATABASE_URL or SQLite fallback)~~ → Fixed: docker-compose.yml provides PostgreSQL with DATABASE_URL
 
+**Resolved in 02-04:**
+- ~~Infinite 401 refresh loop after logout or in incognito mode~~ → Fixed: Added isRefreshing flag to prevent concurrent refresh attempts
+
 ## Session Continuity
 
-Last session: 2026-01-21T00:13:40Z (plan execution)
-Stopped at: Completed 02-03-PLAN.md (Docker Compose Orchestration)
+Last session: 2026-01-21T02:04:02Z (plan execution)
+Stopped at: Completed 02-04-PLAN.md (End-to-End Docker Stack Verification)
 Resume file: None
-Next: Phase 2 almost complete - one plan remaining (02-04)
+Next: Phase 2 complete - ready for Phase 3 (Hetzner VPS deployment)
