@@ -68,3 +68,17 @@ body {
   font-weight: 600;
   color: #60a5fa; /* Blue-400 */
 }
+
+.dark .rdp-day_range_start,
+.dark .rdp-day_range_end {
+  background-color: #3b82f6 !important; /* Blue-500 - matches selected day */
+}
+
+.dark .rdp-day_range_middle {
+  background-color: #1e3a8a !important; /* Blue-900 - darker range background */
+  color: #e5e7eb !important; /* Gray-200 */
+}
+
+.dark .rdp-day_range_middle:hover {
+  background-color: #1e40af !important; /* Blue-800 - slightly lighter on hover */
+}
