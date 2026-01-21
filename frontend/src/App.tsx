@@ -23,6 +23,11 @@ import 'react-day-picker/dist/style.css'; // Styles direkt hier importieren
 import { AuthProvider, useAuth } from './lib/auth';
 import LoginForm from './components/LoginForm';
 
+// New component imports
+import { TimezoneSelector } from './components/TimezoneSelector';
+import { ProjectCell } from './components/ProjectCell';
+import { getTimezone, setTimezone } from './lib/timezone';
+
 // --- TYPEN ---
 interface TimeEntry {
   id: string;
@@ -94,6 +99,10 @@ function AppContent() {
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
   const [showSyncModal, setShowSyncModal] = useState<'TOGGL' | 'TEMPO' | null>(null);
 
+  // Timezone and Jira config state
+  const [timezone, setTimezoneState] = useState(getTimezone());
+  const [jiraBaseUrl, setJiraBaseUrl] = useState<string | null>(null);
+
   // DATE STATE
   const [datePreset, setDatePreset] = useState<DatePreset>('MONTH');
   const [dateRange, setDateRange] = useState<{ start: Date; end: Date }>(() => {
@@ -155,6 +164,19 @@ function AppContent() {
 
   useEffect(() => { fetchData(); }, []);
   useEffect(() => { setSelectedDay(null); }, [filterSource, filterProject, dateRange]);
+
+  // Fetch Jira config on mount
+  useEffect(() => {
+    axios.get(`${API_URL}/config/jira`)
+      .then(res => setJiraBaseUrl(res.data.baseUrl))
+      .catch(() => setJiraBaseUrl(null));
+  }, []);
+
+  // Handle timezone change
+  const handleTimezoneChange = (tz: string) => {
+    setTimezoneState(tz);
+    setTimezone(tz);
+  };
 
   // --- LOGIC: DATE NAVIGATION ---
   const handlePresetChange = (preset: DatePreset) => {
@@ -311,6 +333,14 @@ function AppContent() {
             <h1 className="text-2xl font-bold text-gray-900">vihais Tracker</h1>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+               {/* TIMEZONE SELECTOR */}
+               <div className="flex items-center gap-2 mr-4">
+                 <span className="text-sm text-gray-500">Timezone:</span>
+                 <TimezoneSelector value={timezone} onChange={handleTimezoneChange} />
+               </div>
+
+               <div className="h-8 w-px bg-gray-200 mx-1 hidden md:block"></div>
+
                {/* LOGOUT BUTTON */}
                <button
                  onClick={logout}
@@ -457,7 +487,13 @@ function AppContent() {
                           <tr key={entry.id} className="hover:bg-gray-50 transition-colors group">
                               <td className="px-6 py-3 text-gray-600">{format(parseISO(entry.date), 'EE dd.MM.yyyy', { locale: de })}</td>
                               <td className="px-6 py-3"><span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${entry.source === 'TOGGL' ? 'bg-pink-100 text-pink-800' : 'bg-blue-100 text-blue-800'}`}>{entry.source}</span></td>
-                              <td className="px-6 py-3 font-medium text-gray-800">{entry.project}</td>
+                              <td className="px-6 py-3">
+                                <ProjectCell
+                                  project={entry.project}
+                                  source={entry.source}
+                                  jiraBaseUrl={jiraBaseUrl}
+                                />
+                              </td>
                               <td className="px-6 py-3 text-gray-500 max-w-md truncate" title={entry.description}>{entry.description}</td>
                               <td className="px-6 py-3 text-right font-mono text-gray-700">{entry.duration.toFixed(2)} h</td>
                               <td className="px-6 py-3 text-right">
