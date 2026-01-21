@@ -337,7 +337,7 @@ function AppContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-800 p-6 font-sans relative">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-6 font-sans relative">
       {/* MODALS */}
       {editingEntry && <EditModal entry={editingEntry} onClose={() => setEditingEntry(null)} onSave={updateEntry} />}
 
@@ -352,9 +352,9 @@ function AppContent() {
 
       <div className="max-w-7xl mx-auto space-y-6">
         {/* HEADER */}
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">vihais Tracker</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">vihais Tracker</h1>
           </div>
           <div className="flex flex-wrap items-center gap-3">
                {/* TIMEZONE SELECTOR */}
@@ -366,19 +366,19 @@ function AppContent() {
                {/* THEME TOGGLE */}
                <ThemeToggle />
 
-               <div className="h-8 w-px bg-gray-200 mx-1 hidden md:block"></div>
+               <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
 
                {/* LOGOUT BUTTON */}
                <button
                  onClick={logout}
-                 className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition text-sm font-medium"
+                 className="flex items-center gap-2 px-3 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition text-sm font-medium"
                  title="Logout"
                >
                  <LogOut size={18} />
                  <span className="hidden md:inline">Logout</span>
                </button>
 
-               <div className="h-8 w-px bg-gray-200 mx-1 hidden md:block"></div>
+               <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
 
                {/* SYNC GROUP */}
               <div className="flex items-center rounded-lg border border-pink-200 bg-pink-50 p-0.5 mr-2">
@@ -398,8 +398,8 @@ function AppContent() {
                   <button onClick={() => setShowSyncModal('TEMPO')} className="px-2 py-2 text-blue-700 hover:bg-blue-100 rounded-r-md transition"><Settings size={18} /></button>
               </div>
 
-              <div className="h-8 w-px bg-gray-200 mx-1 hidden md:block"></div>
-              <button onClick={fetchData} className="p-2.5 text-gray-600 hover:bg-gray-100 rounded-lg transition"><RefreshCw size={20} className={loading ? "animate-spin" : ""} /></button>
+              <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
+              <button onClick={fetchData} className="p-2.5 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"><RefreshCw size={20} className={loading ? "animate-spin" : ""} /></button>
               <button
                 onClick={handleExportCSV}
                 className="flex items-center gap-2 bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-sm text-sm"
