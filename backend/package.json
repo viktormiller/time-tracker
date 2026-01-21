@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "nodemon --exec ts-node src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "validate-migration": "ts-node scripts/validate-migration.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^9.4.0",
