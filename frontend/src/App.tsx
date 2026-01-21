@@ -84,13 +84,17 @@ function App() {
 
 function AppContent() {
   const { isAuthenticated, logout } = useAuth();
-  const { effectiveTheme } = useTheme();
 
   // Show login form if not authenticated
   if (!isAuthenticated) {
     return <LoginForm />;
   }
 
+  return <AuthenticatedApp logout={logout} />;
+}
+
+function AuthenticatedApp({ logout }: { logout: () => void }) {
+  const { effectiveTheme } = useTheme();
   const isDarkMode = effectiveTheme === 'dark';
 
   // --- STATE ---
