@@ -37,6 +37,7 @@ interface TimeEntry {
   description: string;
   source: string;
   createdAt: string;
+  externalId: string | null;
 }
 
 interface DailyStats {
@@ -284,10 +285,19 @@ function AppContent() {
         if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
         if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
 
-        // Secondary sort by createdAt (descending) when primary values are equal
+        // Secondary sort by externalId (descending) when primary values are equal
+        // Higher externalId = newer worklog in Tempo/Toggl, so sort desc for newest first
+        if (a.externalId && b.externalId) {
+            const idA = parseInt(a.externalId, 10);
+            const idB = parseInt(b.externalId, 10);
+            if (!isNaN(idA) && !isNaN(idB)) {
+                return idB - idA; // Newer (higher) IDs first
+            }
+        }
+        // Fallback to createdAt if externalId not available
         const createdA = new Date(a.createdAt).getTime();
         const createdB = new Date(b.createdAt).getTime();
-        return createdB - createdA; // Newer entries first
+        return createdB - createdA;
     });
     return data;
   }, [filteredEntries, sortConfig, selectedDay]);
