@@ -6,7 +6,8 @@ WORKDIR /app
 RUN npm install -g npm@latest
 
 COPY package*.json ./
-RUN npm ci
+# Use npm install instead of npm ci due to optional peer dependency resolution issues
+RUN npm install --frozen-lockfile
 COPY . .
 ARG VITE_API_URL=/api
 ENV VITE_API_URL=$VITE_API_URL
