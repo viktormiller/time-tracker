@@ -1,5 +1,5 @@
 # Stage 1: Builder
-FROM node:22-slim AS builder
+FROM node:23-slim AS builder
 
 WORKDIR /app
 
@@ -19,7 +19,7 @@ RUN npx prisma generate
 RUN npm run build
 
 # Stage 2: Production
-FROM node:22-slim
+FROM node:23-slim
 
 # Install openssl (required for Prisma), curl (required for health checks), and Chromium (required for Puppeteer)
 RUN apt-get update && apt-get install -y \
