@@ -89,52 +89,84 @@ export class TempoService {
 
     // 3. Speichern in DB
     let count = 0;
+    let entriesWithKeys = 0;
+    let entriesWithFallback = 0;
+
     for (const entry of entries) {
         const durationHours = entry.timeSpentSeconds / 3600;
 
-        // ROBUSTERE ABFRAGE:
-        // Wir prüfen verschiedene Orte, wo der Key liegen könnte
+        // Extract issue key from Tempo API response
+        // The Tempo API v4 response includes issue.key when available
+        // Format: "ABC-27 - Project Name" for display in project column
         let issueKey = 'Unknown Issue';
+        let projectName = '';
 
-        if (entry.issue && entry.issue.key) {
+        if (entry.issue?.key) {
             issueKey = entry.issue.key;
-        } else if (entry.issue && entry.issue.id) {
-            // Fallback: Wenn Key fehlt, nehmen wir die ID (aus deinem Log: 24990)
+            entriesWithKeys++;
+            console.log(`[Tempo] Entry ${entry.tempoWorklogId}: Using issue key ${entry.issue.key}`);
+
+            // If we also have project info, combine them
+            if (entry.issue.project?.name) {
+                projectName = entry.issue.project.name;
+            }
+        } else if (entry.issue?.id) {
             issueKey = `Issue #${entry.issue.id}`;
+            entriesWithFallback++;
+            console.log(`[Tempo] Entry ${entry.tempoWorklogId}: No key found, using ID ${entry.issue.id}`);
         }
 
-        // Falls Description fehlt, nutzen wir den Kommentar (Tempo nennt das oft 'comment')
-        const description = entry.description || entry.comment || ''; 
+        // Format for project column: "ABC-27 - Project Name" or just "ABC-27"
+        const projectDisplay = projectName
+            ? `${issueKey} - ${projectName}`
+            : issueKey;
 
-        await this.prisma.timeEntry.upsert({
-            where: {
-                source_externalId: {
+        // Falls Description fehlt, nutzen wir den Kommentar (Tempo nennt das oft 'comment')
+        const description = entry.description || entry.comment || '';
+
+        try {
+            await this.prisma.timeEntry.upsert({
+                where: {
+                    source_externalId: {
+                        source: 'TEMPO',
+                        externalId: entry.tempoWorklogId.toString()
+                    }
+                },
+                update: {
+                    duration: durationHours,
+                    description: description,
+                    project: projectDisplay,
+                    date: new Date(entry.startDate)
+                },
+                create: {
                     source: 'TEMPO',
-                    externalId: entry.tempoWorklogId.toString()
+                    externalId: entry.tempoWorklogId.toString(),
+                    date: new Date(entry.startDate),
+                    duration: durationHours,
+                    project: projectDisplay,
+                    description: description
                 }
-            },
-            update: {
-                duration: durationHours,
-                description: description,
-                project: issueKey,
-                date: new Date(entry.startDate)
-            },
-            create: {
-                source: 'TEMPO',
-                externalId: entry.tempoWorklogId.toString(),
-                date: new Date(entry.startDate),
-                duration: durationHours,
-                project: issueKey,
-                description: description
+            });
+            count++;
+        } catch (error: any) {
+            if (error.code === 'P2002') {
+                // Unique constraint violation - fail the operation
+                const errMsg = `Duplicate entry detected: TEMPO/${entry.tempoWorklogId}. ` +
+                    `Issue: ${issueKey}, Date: ${entry.startDate}`;
+                console.error('[Tempo Sync Error]', errMsg);
+                throw new Error(errMsg);
             }
-        });
-        count++;
+            throw error;
+        }
     }
 
-    return { 
-        count, 
-        cached: usedCache, 
-        message: usedCache ? 'Geladen aus Cache' : 'Frisch von Tempo API geladen' 
+    return {
+        count,
+        cached: usedCache,
+        message: usedCache ? 'Geladen aus Cache' : 'Frisch von Tempo API geladen',
+        issueKeysResolved: entriesWithKeys,
+        issueKeysFallback: entriesWithFallback,
+        jiraBaseUrl: process.env.JIRA_BASE_URL || null
     };
   }
 
