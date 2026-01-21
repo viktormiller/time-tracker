@@ -9,19 +9,19 @@ See: .planning/PROJECT.md (updated 2026-01-19)
 
 ## Current Position
 
-Phase: 4 of 7 (UX Enhancements) - IN PROGRESS
-Plan: 3 of 4 plans complete
-Status: Implementing phase
-Last activity: 2026-01-21 — Completed 04-03-PLAN.md
+Phase: 4 of 7 (UX Enhancements) - COMPLETE
+Plan: 4 of 4 plans complete
+Status: Phase verified and complete
+Last activity: 2026-01-21 — Completed 04-01-PLAN.md
 
-Progress: [███████████░░░] 57% (13/23 total plans complete)
+Progress: [████████████░░] 61% (14/23 total plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
-- Average duration: 6.0 min
-- Total execution time: 1.32 hours
+- Total plans completed: 14
+- Average duration: 5.9 min
+- Total execution time: 1.38 hours
 
 **By Phase:**
 
@@ -30,11 +30,11 @@ Progress: [███████████░░░] 57% (13/23 total plans co
 | 01-authentication-a-security | 4/4 (complete) | 26 min | 6.5 min |
 | 02-containerization-a-deployment | 4/4 (complete) | 31 min | 7.8 min |
 | 03-data-quality-postgresql-migration | 4/4 (complete) | 35 min | 8.8 min |
-| 04-ux-enhancements | 3/4 (in progress) | 3 min | 1.0 min |
+| 04-ux-enhancements | 4/4 (complete) | 10 min | 2.5 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-01 (3min), 03-02 (1min), 03-03 (3min), 03-04 (30min), 04-03 (3min)
-- Trend: Implementation plans fast, verification plans take longer
+- Last 5 plans: 03-02 (1min), 03-03 (3min), 03-04 (30min), 04-03 (3min), 04-01 (7min)
+- Trend: UX enhancements phase very fast (planning pays off)
 
 *Updated after each plan completion*
 
@@ -159,6 +159,14 @@ Recent decisions affecting current work:
 - Escape HTML in user content to prevent XSS in PDF generation
 - Fastify logger object-first format: `fastify.log.error({ error }, 'message')`
 
+**From 04-01 (Dark Mode Toggle):**
+- Use Tailwind darkMode: 'selector' for class-based theming (v3.4+ syntax)
+- Toggle between explicit 'light' and 'dark' modes (not 'system') for user clarity
+- Apply dark class to documentElement for global theme control
+- Use inline FOUC prevention script in HTML head before stylesheets
+- Dynamic chart colors via isDarkMode variable instead of CSS-only approach
+- Dark mode palette: gray-900 for backgrounds, gray-800 for cards, gray-700 for inputs
+
 ### Pending Todos
 
 None yet.
@@ -187,7 +195,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-21T05:39:25Z (plan execution)
-Stopped at: Completed 04-03-PLAN.md (Backend PDF Generation Service)
+Last session: 2026-01-21T05:43:00Z (plan execution)
+Stopped at: Completed 04-01-PLAN.md (Dark Mode Toggle)
 Resume file: None
-Next: 04-04 final plan in Phase 4 (UX Enhancements verification)
+Next: Phase 4 complete - ready for Phase 5
