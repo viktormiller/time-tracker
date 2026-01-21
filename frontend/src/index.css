@@ -18,9 +18,41 @@ body {
   --rdp-background-color: #fce7f3; /* Pink-100 */
   margin: 0;
 }
-.rdp-day_selected:not([aria-disabled="true"]) { 
-  background-color: var(--rdp-accent-color); 
+.rdp-day_selected:not([aria-disabled="true"]) {
+  background-color: var(--rdp-accent-color);
 }
 .rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
   background-color: #f3f4f6;
+}
+
+/* Dark mode styles for calendar */
+.dark .rdp {
+  --rdp-accent-color: #3b82f6; /* Blue-500 for better visibility in dark mode */
+  --rdp-background-color: #1e3a8a; /* Blue-900 */
+  color: #e5e7eb; /* Gray-200 */
+}
+
+.dark .rdp-caption {
+  color: #f3f4f6; /* Gray-100 */
+}
+
+.dark .rdp-head_cell {
+  color: #9ca3af; /* Gray-400 */
+}
+
+.dark .rdp-day {
+  color: #e5e7eb; /* Gray-200 */
+}
+
+.dark .rdp-day_outside {
+  color: #6b7280; /* Gray-500 */
+}
+
+.dark .rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
+  background-color: #374151; /* Gray-700 */
+}
+
+.dark .rdp-day_today:not(.rdp-day_selected) {
+  font-weight: 600;
+  color: #60a5fa; /* Blue-400 */
 }
