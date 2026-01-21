@@ -11,6 +11,7 @@ import authPlugin from './plugins/auth';
 import sessionPlugin from './plugins/session';
 import securityPlugin from './plugins/security';
 import authRoutes from './routes/auth.routes';
+import exportRoutes from './routes/export.routes';
 
 const prisma = new PrismaClient();
 const app = Fastify({ logger: true });
@@ -46,6 +47,9 @@ app.register(authRoutes);
 app.register(async (protectedRoutes) => {
   // Apply authentication to ALL routes in this plugin
   protectedRoutes.addHook('onRequest', app.authenticate);
+
+  // Register export routes
+  protectedRoutes.register(exportRoutes);
 
   // Get Jira configuration for frontend
   protectedRoutes.get('/config/jira', async (request, reply) => {
