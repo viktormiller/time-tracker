@@ -47,6 +47,14 @@ app.register(async (protectedRoutes) => {
   // Apply authentication to ALL routes in this plugin
   protectedRoutes.addHook('onRequest', app.authenticate);
 
+  // Get Jira configuration for frontend
+  protectedRoutes.get('/config/jira', async (request, reply) => {
+    return {
+      baseUrl: process.env.JIRA_BASE_URL || null,
+      configured: !!process.env.JIRA_BASE_URL
+    };
+  });
+
   // 1. Get Aggregated Stats
   protectedRoutes.get('/stats', async (request, reply) => {
     // Simple aggregation: Group by date
