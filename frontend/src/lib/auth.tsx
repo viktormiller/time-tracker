@@ -21,33 +21,43 @@ axios.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // If 401 error and not already retried
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true;
-
-      try {
-        // Try to refresh the token (uses HttpOnly cookie)
-        const response = await axios.post(`${API_URL}/auth/refresh`);
-        const { accessToken } = response.data;
-
-        // Update token in memory
-        if (window.authState) {
-          window.authState.setAccessToken(accessToken);
-        }
-
-        // Retry original request with new token
-        originalRequest.headers['Authorization'] = `Bearer ${accessToken}`;
-        return axios(originalRequest);
-      } catch (refreshError) {
-        // Refresh failed - logout user
-        if (window.authState) {
-          window.authState.handleLogout();
-        }
-        return Promise.reject(refreshError);
-      }
+    // Don't retry if:
+    // 1. Not a 401 error
+    // 2. Already retried this request
+    // 3. The failing request was the refresh endpoint itself (prevents infinite loop)
+    // 4. The failing request was login or logout
+    if (
+      error.response?.status !== 401 ||
+      originalRequest._retry ||
+      originalRequest.url?.includes('/auth/refresh') ||
+      originalRequest.url?.includes('/auth/login') ||
+      originalRequest.url?.includes('/auth/logout')
+    ) {
+      return Promise.reject(error);
     }
 
-    return Promise.reject(error);
+    originalRequest._retry = true;
+
+    try {
+      // Try to refresh the token (uses HttpOnly cookie)
+      const response = await axios.post(`${API_URL}/auth/refresh`);
+      const { accessToken } = response.data;
+
+      // Update token in memory
+      if (window.authState) {
+        window.authState.setAccessToken(accessToken);
+      }
+
+      // Retry original request with new token
+      originalRequest.headers['Authorization'] = `Bearer ${accessToken}`;
+      return axios(originalRequest);
+    } catch (refreshError) {
+      // Refresh failed - logout user
+      if (window.authState) {
+        window.authState.handleLogout();
+      }
+      return Promise.reject(refreshError);
+    }
   }
 );
 
