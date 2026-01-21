@@ -79,6 +79,18 @@ body {
   color: #e5e7eb !important; /* Gray-200 */
 }
 
+.dark .rdp-range_middle {
+  background-color: #4b5563; /* Gray-600 - slightly lighter than background to be visible */
+}
+
+.dark .rdp-range_start {
+  background: linear-gradient( var(--rdp-gradient-direction), transparent 50%, #4b5563 50% )
+}
+
+.dark .rdp-range_end {
+  background: linear-gradient( var(--rdp-gradient-direction), #4b5563 50%, transparent 50% )
+}
+
 .dark .rdp-day_range_middle:hover {
   background-color: #1e40af !important; /* Blue-800 - slightly lighter on hover */
 }
