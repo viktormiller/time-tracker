@@ -436,21 +436,21 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
 
                {/* SYNC GROUP */}
-              <div className="flex items-center rounded-lg border border-pink-200 bg-pink-50 p-0.5 mr-2">
-                  <button onClick={() => syncToggl()} disabled={syncing} className="flex items-center gap-2 px-3 py-2 text-pink-700 hover:bg-pink-100 rounded-l-md transition text-sm font-medium">
+              <div className="flex items-center rounded-lg border border-pink-200 dark:border-pink-900 bg-pink-50 dark:bg-pink-900 p-0.5 mr-2">
+                  <button onClick={() => syncToggl()} disabled={syncing} className="flex items-center gap-2 px-3 py-2 text-pink-700 dark:text-white hover:bg-pink-100 dark:hover:bg-pink-800 rounded-l-md transition text-sm font-medium">
                       <CloudLightning size={18} className={syncing ? "animate-pulse" : ""} /> <span className="hidden md:inline">Toggl</span>
                   </button>
-                  <div className="w-px h-5 bg-pink-200"></div>
-                  <button onClick={() => setShowSyncModal('TOGGL')} className="px-2 py-2 text-pink-700 hover:bg-pink-100 rounded-r-md transition"><Settings size={18} /></button>
+                  <div className="w-px h-5 bg-pink-200 dark:bg-pink-700"></div>
+                  <button onClick={() => setShowSyncModal('TOGGL')} className="px-2 py-2 text-pink-700 dark:text-white hover:bg-pink-100 dark:hover:bg-pink-800 rounded-r-md transition"><Settings size={18} /></button>
               </div>
 
               {/* TEMPO SYNC GROUP - Blau gehalten für Jira */}
-              <div className="flex items-center rounded-lg border border-blue-200 bg-blue-50 p-0.5">
-                  <button onClick={() => syncTempo()} disabled={syncing} className="flex items-center gap-2 px-3 py-2 text-blue-700 hover:bg-blue-100 rounded-l-md transition text-sm font-medium">
+              <div className="flex items-center rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-900 p-0.5">
+                  <button onClick={() => syncTempo()} disabled={syncing} className="flex items-center gap-2 px-3 py-2 text-blue-700 dark:text-white hover:bg-blue-100 dark:hover:bg-blue-800 rounded-l-md transition text-sm font-medium">
                       <Layers size={18} className={syncing ? "animate-pulse" : ""} /> <span className="hidden md:inline">Tempo</span>
                   </button>
-                  <div className="w-px h-5 bg-blue-200"></div>
-                  <button onClick={() => setShowSyncModal('TEMPO')} className="px-2 py-2 text-blue-700 hover:bg-blue-100 rounded-r-md transition"><Settings size={18} /></button>
+                  <div className="w-px h-5 bg-blue-200 dark:bg-blue-700"></div>
+                  <button onClick={() => setShowSyncModal('TEMPO')} className="px-2 py-2 text-blue-700 dark:text-white hover:bg-blue-100 dark:hover:bg-blue-800 rounded-r-md transition"><Settings size={18} /></button>
               </div>
 
               <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
@@ -517,8 +517,8 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
         {/* KPIs */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card title="Stunden Heute" value={hoursToday.toFixed(2)} unit="h" color="text-indigo-600" />
-          <Card title="Summe im Zeitraum" value={totalHoursFiltered.toFixed(2)} unit="h" color="text-gray-900" />
-          <Card title="Einträge" value={filteredEntries.length.toString()} unit="#" color="text-gray-600" />
+          <Card title="Summe im Zeitraum" value={totalHoursFiltered.toFixed(2)} unit="h" color="text-gray-900 dark:text-gray-100" />
+          <Card title="Einträge" value={filteredEntries.length.toString()} unit="#" color="text-gray-600 dark:text-gray-100" />
         </div>
 
         {/* CHART */}
