@@ -1,13 +1,15 @@
 -- CreateTable
 CREATE TABLE "TimeEntry" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "source" TEXT NOT NULL,
     "externalId" TEXT,
-    "date" DATETIME NOT NULL,
-    "duration" REAL NOT NULL,
+    "date" TIMESTAMP(3) NOT NULL,
+    "duration" DOUBLE PRECISION NOT NULL,
     "project" TEXT,
     "description" TEXT,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "TimeEntry_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex

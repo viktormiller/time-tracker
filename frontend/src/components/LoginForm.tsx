@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useAuth } from '../lib/auth';
 import { LogIn, Loader2 } from 'lucide-react';
 

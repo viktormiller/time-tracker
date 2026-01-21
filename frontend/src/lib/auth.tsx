@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import axios from 'axios';
 
 const API_URL = '/api';
@@ -76,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
       });
 
-      const { accessToken: token, expiresIn } = response.data;
+      const { accessToken: token } = response.data;
 
       // Decode JWT payload to get user info (simple base64 decode)
       const payload = JSON.parse(atob(token.split('.')[1]));

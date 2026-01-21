@@ -12,17 +12,17 @@ RUN npm ci
 # Copy source files
 COPY . .
 
+# Generate Prisma Client (must be before TypeScript build)
+RUN npx prisma generate
+
 # Build TypeScript
 RUN npm run build
-
-# Generate Prisma Client
-RUN npx prisma generate
 
 # Stage 2: Production
 FROM node:22-slim
 
-# Install openssl (required for Prisma)
-RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+# Install openssl (required for Prisma) and curl (required for health checks)
+RUN apt-get update && apt-get install -y openssl curl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

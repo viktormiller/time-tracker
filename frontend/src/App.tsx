@@ -11,7 +11,7 @@ import {
   format, parseISO, isSameDay, startOfToday, endOfToday,
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   startOfQuarter, endOfQuarter, startOfYear, endOfYear,
-  subWeeks, subMonths, isWithinInterval, addDays, addWeeks, addMonths, addQuarters, addYears, eachDayOfInterval, subDays
+  subWeeks, subMonths, isWithinInterval, addDays, addWeeks, addMonths, addQuarters, addYears, eachDayOfInterval
 } from 'date-fns';
 import { de } from 'date-fns/locale';
 
@@ -122,7 +122,7 @@ function AppContent() {
   };
 
   const syncToggl = async (startDate?: string, endDate?: string) => {
-      setSyncing(true); setShowSyncModal(false);
+      setSyncing(true); setShowSyncModal(null);
       try {
           const isCustom = !!startDate && startDate !== '';
 
@@ -140,7 +140,7 @@ function AppContent() {
   };
 
   const syncTempo = async (startDate?: string, endDate?: string) => {
-      setSyncing(true); setShowSyncModal(false);
+      setSyncing(true); setShowSyncModal(null);
       try {
           const isCustom = !!startDate;
           const payload = isCustom ? { startDate, endDate } : {};
@@ -420,7 +420,7 @@ function AppContent() {
                         ))}
                     </Bar>
                     <Line type="monotone" dataKey="totalHours" stroke="none" dot={false} activeDot={false} isAnimationActive={false}>
-                        <LabelList dataKey="totalHours" position="top" offset={10} formatter={(val: number) => val > 0 ? val.toFixed(2) : ''} style={{ fontSize: '12px', fill: '#6b7280', fontWeight: 600 }} />
+                        <LabelList dataKey="totalHours" position="top" offset={10} formatter={(val) => typeof val === 'number' && val > 0 ? val.toFixed(2) : ''} style={{ fontSize: '12px', fill: '#6b7280', fontWeight: 600 }} />
                     </Line>
                   </ComposedChart>
               </ResponsiveContainer>
