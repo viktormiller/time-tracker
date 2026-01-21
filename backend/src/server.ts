@@ -29,6 +29,16 @@ app.register(sessionPlugin);
 
 // --- Routes ---
 
+// Health check endpoint (public, for Docker health checks)
+app.get('/health', async (request, reply) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return { status: 'healthy', timestamp: new Date().toISOString() };
+  } catch (error) {
+    reply.code(503).send({ status: 'unhealthy', error: 'Database connection failed' });
+  }
+});
+
 // Auth routes (public - no authentication required)
 app.register(authRoutes);
 
