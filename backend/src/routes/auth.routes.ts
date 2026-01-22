@@ -171,4 +171,118 @@ export default async function (fastify: FastifyInstance) {
       return { message: 'Logged out' };
     }
   );
+
+  /**
+   * POST /api/auth/cli-login
+   * CLI-specific login that returns tokens in response body
+   * (NOT in cookies, since CLI tools can't use HttpOnly cookies)
+   */
+  fastify.post<{
+    Body: { username: string; password: string };
+  }>(
+    '/api/auth/cli-login',
+    {
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: '15 minutes',
+        },
+      },
+    },
+    async (request, reply) => {
+      const { username, password } = request.body;
+
+      // Validate required fields
+      if (!username || !password) {
+        return reply.code(400).send({ error: 'Username and password required' });
+      }
+
+      // Validate username matches admin user
+      const adminUser = process.env.ADMIN_USER || 'admin';
+      if (username !== adminUser) {
+        return reply.code(401).send({ error: 'Invalid credentials' });
+      }
+
+      // Load admin password hash
+      let adminPasswordHash: string;
+      try {
+        adminPasswordHash = loadSecret('admin_password_hash');
+      } catch (err) {
+        fastify.log.error({ err }, 'Failed to load admin password hash');
+        return reply.code(500).send({ error: 'Server configuration error' });
+      }
+
+      // Verify password with bcrypt
+      const isValid = await bcrypt.compare(password, adminPasswordHash);
+      if (!isValid) {
+        return reply.code(401).send({ error: 'Invalid credentials' });
+      }
+
+      // Generate access token (short-lived: 15 minutes)
+      const accessToken = fastify.jwt.sign(
+        { userId: 1, role: 'admin' },
+        { expiresIn: '15m' }
+      );
+
+      // Generate refresh token (long-lived: 30 days)
+      const refreshToken = fastify.jwt.sign(
+        { userId: 1, type: 'refresh' },
+        { expiresIn: '30d' }
+      );
+
+      // Return BOTH tokens in response body (for CLI use)
+      return {
+        accessToken,
+        refreshToken,
+        expiresIn: 900, // 15 minutes in seconds
+      };
+    }
+  );
+
+  /**
+   * POST /api/auth/cli-refresh
+   * CLI-specific refresh that accepts token in request body
+   * (NOT from cookies, since CLI tools can't use HttpOnly cookies)
+   */
+  fastify.post<{
+    Body: { refreshToken: string };
+  }>('/api/auth/cli-refresh', async (request, reply) => {
+    const { refreshToken } = request.body;
+
+    if (!refreshToken) {
+      return reply.code(401).send({ error: 'Refresh token required' });
+    }
+
+    // Verify refresh token
+    let decoded: any;
+    try {
+      decoded = fastify.jwt.verify(refreshToken);
+    } catch (err) {
+      return reply.code(401).send({ error: 'Invalid or expired refresh token' });
+    }
+
+    // Validate token type
+    if (decoded.type !== 'refresh') {
+      return reply.code(401).send({ error: 'Invalid token type' });
+    }
+
+    // Generate NEW access token
+    const accessToken = fastify.jwt.sign(
+      { userId: decoded.userId, role: 'admin' },
+      { expiresIn: '15m' }
+    );
+
+    // Generate NEW refresh token (rotation prevents token reuse)
+    const newRefreshToken = fastify.jwt.sign(
+      { userId: decoded.userId, type: 'refresh' },
+      { expiresIn: '30d' }
+    );
+
+    // Return new tokens in response body
+    return {
+      accessToken,
+      refreshToken: newRefreshToken,
+      expiresIn: 900, // 15 minutes in seconds
+    };
+  });
 }

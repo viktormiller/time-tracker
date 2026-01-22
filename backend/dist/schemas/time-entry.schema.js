@@ -10,7 +10,8 @@ exports.createTimeEntrySchema = zod_1.z.object({
     startTime: zod_1.z.string().regex(/^\d{2}:\d{2}$/, 'Start time must be in HH:mm format'),
     endTime: zod_1.z.string().regex(/^\d{2}:\d{2}$/, 'End time must be in HH:mm format'),
     description: zod_1.z.string().optional(),
-    project: zod_1.z.string().optional()
+    project: zod_1.z.string().optional(),
+    timezone: zod_1.z.string().optional() // User's timezone (IANA format like 'Asia/Seoul')
 }).refine((data) => {
     // Validate that endTime is after startTime
     const [startHour, startMin] = data.startTime.split(':').map(Number);

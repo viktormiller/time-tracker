@@ -11,6 +11,7 @@ import sessionPlugin from './plugins/session';
 import securityPlugin from './plugins/security';
 import authRoutes from './routes/auth.routes';
 import exportRoutes from './routes/export.routes';
+import summaryRoutes from './routes/summary.routes';
 import { createTimeEntrySchema, calculateDuration, generateManualExternalId } from './schemas/time-entry.schema';
 import { fromZonedTime } from 'date-fns-tz';
 
@@ -51,6 +52,9 @@ app.register(async (protectedRoutes) => {
 
   // Register export routes
   protectedRoutes.register(exportRoutes);
+
+  // Register summary routes
+  protectedRoutes.register(summaryRoutes);
 
   // Get Jira configuration for frontend
   protectedRoutes.get('/config/jira', async (request, reply) => {

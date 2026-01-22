@@ -48,6 +48,8 @@ class TogglCsvAdapter {
                     duration: duration,
                     project: project,
                     description: description,
+                    startTime: null,
+                    endTime: null,
                 });
             }
         }

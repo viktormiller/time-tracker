@@ -67,6 +67,8 @@ class TempoCsvAdapter {
                                 duration: hours,
                                 project: key,
                                 description: issue,
+                                startTime: null,
+                                endTime: null,
                             });
                         }
                     }

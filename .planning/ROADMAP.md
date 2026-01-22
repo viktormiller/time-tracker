@@ -119,10 +119,13 @@ Plans:
   3. User can run `timetracker sync` to trigger backend sync
   4. CLI authenticates with backend API using JWT
   5. CLI config stored securely in ~/.timetracker/config.yaml
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 06-01: TBD
+- [ ] 06-01-PLAN.md — Backend summary endpoints and unified sync API
+- [ ] 06-02-PLAN.md — CLI-specific authentication endpoints
+- [ ] 06-03-PLAN.md — Go CLI scaffolding and login command
+- [ ] 06-04-PLAN.md — Today, week, and sync commands
 
 ### Phase 7: Future Sources
 **Goal**: System supports Clockify and makes adding sources trivial
@@ -151,5 +154,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 3. Data Quality & PostgreSQL Migration | 4/4 | Complete | 2026-01-21 |
 | 4. UX Enhancements | 4/4 | Complete | 2026-01-22 |
 | 5. Manual Entry & Provider Abstraction | 0/? | Not started | - |
-| 6. CLI Tool | 0/? | Not started | - |
+| 6. CLI Tool | 0/4 | Planned | - |
 | 7. Future Sources | 0/? | Not started | - |

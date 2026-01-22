@@ -1,0 +1,17 @@
+# Binaries
+timetracker
+timetracker-*
+
+# Go test coverage
+*.out
+coverage.html
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store

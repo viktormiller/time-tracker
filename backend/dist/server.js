@@ -16,7 +16,9 @@ const session_1 = __importDefault(require("./plugins/session"));
 const security_1 = __importDefault(require("./plugins/security"));
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const export_routes_1 = __importDefault(require("./routes/export.routes"));
+const summary_routes_1 = __importDefault(require("./routes/summary.routes"));
 const time_entry_schema_1 = require("./schemas/time-entry.schema");
+const date_fns_tz_1 = require("date-fns-tz");
 const prisma = new client_1.PrismaClient();
 const app = (0, fastify_1.default)({ logger: true });
 // Register plugins
@@ -48,6 +50,8 @@ app.register(async (protectedRoutes) => {
     protectedRoutes.addHook('onRequest', app.authenticate);
     // Register export routes
     protectedRoutes.register(export_routes_1.default);
+    // Register summary routes
+    protectedRoutes.register(summary_routes_1.default);
     // Get Jira configuration for frontend
     protectedRoutes.get('/config/jira', async (request, reply) => {
         return {
@@ -222,16 +226,33 @@ app.register(async (protectedRoutes) => {
     // Eintrag aktualisieren
     protectedRoutes.put('/entries/:id', async (req, reply) => {
         const { id } = req.params;
-        const { date, duration, project, description, source } = req.body;
+        const { date, duration, project, description, source, startTime, endTime, timezone } = req.body;
         try {
+            // For manual entries, recalculate duration if start/end times are provided
+            let finalDuration = parseFloat(duration.toString());
+            let dateTime = new Date(date);
+            if (source === 'MANUAL' && startTime && endTime) {
+                // Recalculate duration from times
+                const [startHour, startMin] = startTime.split(':').map(Number);
+                const [endHour, endMin] = endTime.split(':').map(Number);
+                const startMinutes = startHour * 60 + startMin;
+                const endMinutes = endHour * 60 + endMin;
+                finalDuration = (endMinutes - startMinutes) / 60;
+                // Convert local time to UTC using the provided timezone
+                const tz = timezone || 'UTC';
+                const localDateTime = `${date}T${startTime}:00`;
+                dateTime = (0, date_fns_tz_1.fromZonedTime)(localDateTime, tz);
+            }
             const updated = await prisma.timeEntry.update({
                 where: { id },
                 data: {
-                    date: new Date(date), // String wieder in Date Objekt wandeln
-                    duration: parseFloat(duration.toString()), // Sicherstellen, dass es eine Zahl ist
+                    date: dateTime,
+                    duration: finalDuration,
                     project,
                     description,
-                    source
+                    source,
+                    startTime: startTime || null,
+                    endTime: endTime || null
                 },
             });
             return updated;
@@ -250,15 +271,21 @@ app.register(async (protectedRoutes) => {
             const duration = (0, time_entry_schema_1.calculateDuration)(validatedData.startTime, validatedData.endTime);
             // Generate unique external ID
             const externalId = (0, time_entry_schema_1.generateManualExternalId)();
+            // Combine date and start time in the user's timezone, then convert to UTC
+            const timezone = validatedData.timezone || 'UTC';
+            const localDateTime = `${validatedData.date}T${validatedData.startTime}:00`;
+            const dateTime = (0, date_fns_tz_1.fromZonedTime)(localDateTime, timezone);
             // Create entry in database
             const entry = await prisma.timeEntry.create({
                 data: {
                     source: 'MANUAL',
                     externalId,
-                    date: new Date(validatedData.date),
+                    date: dateTime,
                     duration,
                     project: validatedData.project || null,
-                    description: validatedData.description || null
+                    description: validatedData.description || null,
+                    startTime: validatedData.startTime,
+                    endTime: validatedData.endTime
                 }
             });
             return reply.code(201).send(entry);
