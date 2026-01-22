@@ -2,6 +2,8 @@ services:
   db:
     environment:
       POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      # Explicitly unset POSTGRES_PASSWORD from base config (can't use both)
+      POSTGRES_PASSWORD:
     secrets:
       - db_password
 

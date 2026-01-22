@@ -1,6 +1,7 @@
 backend/node_modules
 .idea/
 .env
+.env.prod
 backend/.env
 backend/toggl_cache.json
 backend/tempo_cache.json
