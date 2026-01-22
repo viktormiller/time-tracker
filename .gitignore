@@ -1,9 +1,9 @@
 backend/node_modules
-/.idea/
-/.env
-/backend/.env
-/backend/toggl_cache.json
-/backend/tempo_cache.json
+.idea/
+.env
+backend/.env
+backend/toggl_cache.json
+backend/tempo_cache.json
 backend/prisma/dev.db
 backend/secrets/
 
