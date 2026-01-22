@@ -13,7 +13,7 @@ const summaryRoutes = async (fastify) => {
      * GET /api/entries/summary/today
      * Returns today's total hours and breakdown by source
      */
-    fastify.get('/api/entries/summary/today', async (request, reply) => {
+    fastify.get('/entries/summary/today', async (request, reply) => {
         const now = new Date();
         const dayStart = (0, date_fns_1.startOfDay)(now);
         const dayEnd = (0, date_fns_1.endOfDay)(now);
@@ -48,7 +48,7 @@ const summaryRoutes = async (fastify) => {
      * GET /api/entries/summary/week
      * Returns weekly totals with daily and source breakdown
      */
-    fastify.get('/api/entries/summary/week', async (request, reply) => {
+    fastify.get('/entries/summary/week', async (request, reply) => {
         const now = new Date();
         const weekStart = (0, date_fns_1.startOfWeek)(now, { weekStartsOn: 1 }); // Monday
         const weekEnd = (0, date_fns_1.endOfWeek)(now, { weekStartsOn: 1 }); // Sunday
@@ -109,7 +109,7 @@ const summaryRoutes = async (fastify) => {
      * POST /api/sync
      * Triggers sync from all configured providers
      */
-    fastify.post('/api/sync', async (request, reply) => {
+    fastify.post('/sync', async (request, reply) => {
         const force = request.query.force === 'true';
         // Get all providers
         const providers = provider_factory_1.ProviderFactory.getAllProviders(prisma);
@@ -130,8 +130,8 @@ const summaryRoutes = async (fastify) => {
                 return {
                     provider: name,
                     success: true,
-                    imported: result.imported,
-                    skipped: result.skipped,
+                    imported: result.count, // Providers return 'count', not 'imported'
+                    skipped: 0, // Providers don't track skipped separately
                 };
             }
             catch (error) {

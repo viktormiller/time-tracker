@@ -14,7 +14,7 @@ const summaryRoutes: FastifyPluginAsync = async (fastify) => {
    * GET /api/entries/summary/today
    * Returns today's total hours and breakdown by source
    */
-  fastify.get('/api/entries/summary/today', async (request, reply) => {
+  fastify.get('/entries/summary/today', async (request, reply) => {
     const now = new Date();
     const dayStart = startOfDay(now);
     const dayEnd = endOfDay(now);
@@ -54,7 +54,7 @@ const summaryRoutes: FastifyPluginAsync = async (fastify) => {
    * GET /api/entries/summary/week
    * Returns weekly totals with daily and source breakdown
    */
-  fastify.get('/api/entries/summary/week', async (request, reply) => {
+  fastify.get('/entries/summary/week', async (request, reply) => {
     const now = new Date();
     const weekStart = startOfWeek(now, { weekStartsOn: 1 }); // Monday
     const weekEnd = endOfWeek(now, { weekStartsOn: 1 }); // Sunday
@@ -123,7 +123,7 @@ const summaryRoutes: FastifyPluginAsync = async (fastify) => {
    * POST /api/sync
    * Triggers sync from all configured providers
    */
-  fastify.post<{ Querystring: { force?: string } }>('/api/sync', async (request, reply) => {
+  fastify.post<{ Querystring: { force?: string } }>('/sync', async (request, reply) => {
     const force = request.query.force === 'true';
 
     // Get all providers
@@ -149,8 +149,8 @@ const summaryRoutes: FastifyPluginAsync = async (fastify) => {
           return {
             provider: name,
             success: true,
-            imported: result.imported,
-            skipped: result.skipped,
+            imported: result.count, // Providers return 'count', not 'imported'
+            skipped: 0, // Providers don't track skipped separately
           };
         } catch (error) {
           fastify.log.error({ provider: name, error }, 'Sync failed');

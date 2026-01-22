@@ -17,7 +17,6 @@ type Client struct {
 func NewClient(cfg *config.Config) *Client {
 	client := resty.New()
 	client.SetBaseURL(cfg.APIURL)
-	client.SetHeader("Content-Type", "application/json")
 
 	// Set access token if available
 	if cfg.AccessToken != "" {
@@ -43,12 +42,8 @@ func (c *Client) RefreshTokenIfNeeded() error {
 		return c.RefreshToken()
 	}
 
-	// For simplicity, we'll refresh the token before each request
-	// In a production app, you'd check token expiry here
-	if c.config.RefreshToken != "" {
-		return c.RefreshToken()
-	}
-
+	// Don't auto-refresh on every request - tokens last 15 minutes
+	// Only refresh if we get a 401 error (handled in the request methods)
 	return nil
 }
 
@@ -86,6 +81,7 @@ func (c *Client) Post(endpoint string, body interface{}, result interface{}) err
 	req := c.resty.R()
 
 	if body != nil {
+		req.SetHeader("Content-Type", "application/json")
 		req.SetBody(body)
 	}
 
