@@ -4,8 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 require("dotenv/config");
-const toggl_service_1 = require("./services/toggl.service");
-const tempo_service_1 = require("./services/tempo.service");
+const provider_factory_1 = require("./providers/provider.factory");
 const fastify_1 = __importDefault(require("fastify"));
 const multipart_1 = __importDefault(require("@fastify/multipart"));
 const cors_1 = __importDefault(require("@fastify/cors"));
@@ -17,6 +16,7 @@ const session_1 = __importDefault(require("./plugins/session"));
 const security_1 = __importDefault(require("./plugins/security"));
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const export_routes_1 = __importDefault(require("./routes/export.routes"));
+const time_entry_schema_1 = require("./schemas/time-entry.schema");
 const prisma = new client_1.PrismaClient();
 const app = (0, fastify_1.default)({ logger: true });
 // Register plugins
@@ -54,6 +54,47 @@ app.register(async (protectedRoutes) => {
             baseUrl: process.env.JIRA_BASE_URL || null,
             configured: !!process.env.JIRA_BASE_URL
         };
+    });
+    // Get provider status
+    protectedRoutes.get('/providers/status', async (request, reply) => {
+        const providers = provider_factory_1.ProviderFactory.getAllProviders(prisma);
+        const statuses = await Promise.all(providers.map(async (provider) => {
+            const name = provider.getName();
+            // Validate provider configuration
+            const isValid = await provider.validate();
+            // Get entry count from database
+            const entryCount = await prisma.timeEntry.count({
+                where: { source: name }
+            });
+            // Get last sync time (most recent entry's createdAt)
+            const lastEntry = await prisma.timeEntry.findFirst({
+                where: { source: name },
+                orderBy: { createdAt: 'desc' },
+                select: { createdAt: true }
+            });
+            return {
+                name,
+                configured: isValid,
+                entryCount,
+                lastSync: lastEntry?.createdAt || null
+            };
+        }));
+        // Add manual entry status
+        const manualCount = await prisma.timeEntry.count({
+            where: { source: 'MANUAL' }
+        });
+        const lastManualEntry = await prisma.timeEntry.findFirst({
+            where: { source: 'MANUAL' },
+            orderBy: { createdAt: 'desc' },
+            select: { createdAt: true }
+        });
+        statuses.push({
+            name: 'MANUAL',
+            configured: true,
+            entryCount: manualCount,
+            lastSync: lastManualEntry?.createdAt || null
+        });
+        return { providers: statuses };
     });
     // 1. Get Aggregated Stats
     protectedRoutes.get('/stats', async (request, reply) => {
@@ -130,12 +171,15 @@ app.register(async (protectedRoutes) => {
     // Toggl Sync Route
     protectedRoutes.post('/sync/toggl', async (req, reply) => {
         const force = req.query.force === 'true';
-        // Body parsen für Custom Dates
         const { startDate, endDate } = req.body || {};
         console.log('[API Route] /sync/toggl called with body:', req.body);
-        const togglService = new toggl_service_1.TogglService(prisma);
+        const provider = provider_factory_1.ProviderFactory.getProvider('TOGGL', prisma);
         try {
-            const result = await togglService.syncTogglEntries(force, startDate, endDate);
+            const result = await provider.sync({
+                forceRefresh: force,
+                customStart: startDate,
+                customEnd: endDate
+            });
             return result;
         }
         catch (error) {
@@ -147,9 +191,13 @@ app.register(async (protectedRoutes) => {
     protectedRoutes.post('/sync/tempo', async (req, reply) => {
         const force = req.query.force === 'true';
         const { startDate, endDate } = req.body || {};
-        const tempoService = new tempo_service_1.TempoService(prisma);
+        const provider = provider_factory_1.ProviderFactory.getProvider('TEMPO', prisma);
         try {
-            const result = await tempoService.syncTempoEntries(force, startDate, endDate);
+            const result = await provider.sync({
+                forceRefresh: force,
+                customStart: startDate,
+                customEnd: endDate
+            });
             return result;
         }
         catch (error) {
@@ -191,6 +239,39 @@ app.register(async (protectedRoutes) => {
         catch (error) {
             req.log.error(error);
             return reply.code(500).send({ error: 'Could not update entry' });
+        }
+    });
+    // Create manual entry
+    protectedRoutes.post('/entries', async (req, reply) => {
+        try {
+            // Validate request body
+            const validatedData = time_entry_schema_1.createTimeEntrySchema.parse(req.body);
+            // Calculate duration from start and end times
+            const duration = (0, time_entry_schema_1.calculateDuration)(validatedData.startTime, validatedData.endTime);
+            // Generate unique external ID
+            const externalId = (0, time_entry_schema_1.generateManualExternalId)();
+            // Create entry in database
+            const entry = await prisma.timeEntry.create({
+                data: {
+                    source: 'MANUAL',
+                    externalId,
+                    date: new Date(validatedData.date),
+                    duration,
+                    project: validatedData.project || null,
+                    description: validatedData.description || null
+                }
+            });
+            return reply.code(201).send(entry);
+        }
+        catch (error) {
+            if (error.name === 'ZodError') {
+                return reply.code(400).send({
+                    error: 'Validation failed',
+                    details: error.errors
+                });
+            }
+            req.log.error(error);
+            return reply.code(500).send({ error: 'Could not create entry' });
         }
     });
 }, { prefix: '/api' });

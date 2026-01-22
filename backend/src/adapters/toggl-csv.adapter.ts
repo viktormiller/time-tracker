@@ -56,6 +56,8 @@ async parse(fileContent: string): Promise<ImportResult> {
           duration: duration,
           project: project,
           description: description,
+          startTime: null,
+          endTime: null,
         });
       }
     } catch (error) {

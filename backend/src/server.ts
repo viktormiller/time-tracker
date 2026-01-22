@@ -1,6 +1,5 @@
 import 'dotenv/config';
-import { TogglService } from './services/toggl.service';
-import { TempoService } from './services/tempo.service';
+import { ProviderFactory } from './providers/provider.factory';
 import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
 import cors from '@fastify/cors';
@@ -12,6 +11,8 @@ import sessionPlugin from './plugins/session';
 import securityPlugin from './plugins/security';
 import authRoutes from './routes/auth.routes';
 import exportRoutes from './routes/export.routes';
+import { createTimeEntrySchema, calculateDuration, generateManualExternalId } from './schemas/time-entry.schema';
+import { fromZonedTime } from 'date-fns-tz';
 
 const prisma = new PrismaClient();
 const app = Fastify({ logger: true });
@@ -57,6 +58,59 @@ app.register(async (protectedRoutes) => {
       baseUrl: process.env.JIRA_BASE_URL || null,
       configured: !!process.env.JIRA_BASE_URL
     };
+  });
+
+  // Get provider status
+  protectedRoutes.get('/providers/status', async (request, reply) => {
+    const providers = ProviderFactory.getAllProviders(prisma);
+
+    const statuses = await Promise.all(
+      providers.map(async (provider) => {
+        const name = provider.getName();
+
+        // Validate provider configuration
+        const isValid = await provider.validate();
+
+        // Get entry count from database
+        const entryCount = await prisma.timeEntry.count({
+          where: { source: name }
+        });
+
+        // Get last sync time (most recent entry's createdAt)
+        const lastEntry = await prisma.timeEntry.findFirst({
+          where: { source: name },
+          orderBy: { createdAt: 'desc' },
+          select: { createdAt: true }
+        });
+
+        return {
+          name,
+          configured: isValid,
+          entryCount,
+          lastSync: lastEntry?.createdAt || null
+        };
+      })
+    );
+
+    // Add manual entry status
+    const manualCount = await prisma.timeEntry.count({
+      where: { source: 'MANUAL' }
+    });
+
+    const lastManualEntry = await prisma.timeEntry.findFirst({
+      where: { source: 'MANUAL' },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true }
+    });
+
+    statuses.push({
+      name: 'MANUAL',
+      configured: true,
+      entryCount: manualCount,
+      lastSync: lastManualEntry?.createdAt || null
+    });
+
+    return { providers: statuses };
   });
 
   // 1. Get Aggregated Stats
@@ -143,15 +197,18 @@ app.register(async (protectedRoutes) => {
   // Toggl Sync Route
   protectedRoutes.post<{ Querystring: { force: string }, Body: { startDate?: string, endDate?: string } }>('/sync/toggl', async (req, reply) => {
       const force = req.query.force === 'true';
-      // Body parsen für Custom Dates
       const { startDate, endDate } = req.body || {};
 
       console.log('[API Route] /sync/toggl called with body:', req.body);
 
-      const togglService = new TogglService(prisma);
+      const provider = ProviderFactory.getProvider('TOGGL', prisma);
 
       try {
-          const result = await togglService.syncTogglEntries(force, startDate, endDate);
+          const result = await provider.sync({
+            forceRefresh: force,
+            customStart: startDate,
+            customEnd: endDate
+          });
           return result;
       } catch (error) {
           req.log.error(error);
@@ -164,10 +221,14 @@ app.register(async (protectedRoutes) => {
       const force = req.query.force === 'true';
       const { startDate, endDate } = req.body || {};
 
-      const tempoService = new TempoService(prisma);
+      const provider = ProviderFactory.getProvider('TEMPO', prisma);
 
       try {
-          const result = await tempoService.syncTempoEntries(force, startDate, endDate);
+          const result = await provider.sync({
+            forceRefresh: force,
+            customStart: startDate,
+            customEnd: endDate
+          });
           return result;
       } catch (error) {
           req.log.error(error);
@@ -190,25 +251,89 @@ app.register(async (protectedRoutes) => {
   });
 
   // Eintrag aktualisieren
-  protectedRoutes.put<{ Params: { id: string }; Body: { date: string; duration: number; project: string; description: string; source: string } }>('/entries/:id', async (req, reply) => {
+  protectedRoutes.put<{ Params: { id: string }; Body: { date: string; duration: number; project: string; description: string; source: string; startTime?: string; endTime?: string; timezone?: string } }>('/entries/:id', async (req, reply) => {
     const { id } = req.params;
-    const { date, duration, project, description, source } = req.body;
+    const { date, duration, project, description, source, startTime, endTime, timezone } = req.body;
 
     try {
+      // For manual entries, recalculate duration if start/end times are provided
+      let finalDuration = parseFloat(duration.toString());
+      let dateTime = new Date(date);
+
+      if (source === 'MANUAL' && startTime && endTime) {
+        // Recalculate duration from times
+        const [startHour, startMin] = startTime.split(':').map(Number);
+        const [endHour, endMin] = endTime.split(':').map(Number);
+        const startMinutes = startHour * 60 + startMin;
+        const endMinutes = endHour * 60 + endMin;
+        finalDuration = (endMinutes - startMinutes) / 60;
+
+        // Convert local time to UTC using the provided timezone
+        const tz = timezone || 'UTC';
+        const localDateTime = `${date}T${startTime}:00`;
+        dateTime = fromZonedTime(localDateTime, tz);
+      }
+
       const updated = await prisma.timeEntry.update({
         where: { id },
         data: {
-          date: new Date(date), // String wieder in Date Objekt wandeln
-          duration: parseFloat(duration.toString()), // Sicherstellen, dass es eine Zahl ist
+          date: dateTime,
+          duration: finalDuration,
           project,
           description,
-          source
+          source,
+          startTime: startTime || null,
+          endTime: endTime || null
         },
       });
       return updated;
     } catch (error) {
       req.log.error(error);
       return reply.code(500).send({ error: 'Could not update entry' });
+    }
+  });
+
+  // Create manual entry
+  protectedRoutes.post('/entries', async (req, reply) => {
+    try {
+      // Validate request body
+      const validatedData = createTimeEntrySchema.parse(req.body);
+
+      // Calculate duration from start and end times
+      const duration = calculateDuration(validatedData.startTime, validatedData.endTime);
+
+      // Generate unique external ID
+      const externalId = generateManualExternalId();
+
+      // Combine date and start time in the user's timezone, then convert to UTC
+      const timezone = validatedData.timezone || 'UTC';
+      const localDateTime = `${validatedData.date}T${validatedData.startTime}:00`;
+      const dateTime = fromZonedTime(localDateTime, timezone);
+
+      // Create entry in database
+      const entry = await prisma.timeEntry.create({
+        data: {
+          source: 'MANUAL',
+          externalId,
+          date: dateTime,
+          duration,
+          project: validatedData.project || null,
+          description: validatedData.description || null,
+          startTime: validatedData.startTime,
+          endTime: validatedData.endTime
+        }
+      });
+
+      return reply.code(201).send(entry);
+    } catch (error: any) {
+      if (error.name === 'ZodError') {
+        return reply.code(400).send({
+          error: 'Validation failed',
+          details: error.errors
+        });
+      }
+      req.log.error(error);
+      return reply.code(500).send({ error: 'Could not create entry' });
     }
   });
 

@@ -45,3 +45,20 @@ export function getBrowserTimezone(): string {
   }
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
+
+/**
+ * Format a date string in the user's selected timezone.
+ * @param dateString - ISO date string from the backend
+ * @param formatStr - date-fns format string (e.g., 'EE dd.MM.yyyy HH:mm')
+ * @param locale - date-fns locale object
+ */
+export function formatInTimezone(
+  _dateString: string,
+  formatStr: string,
+  _locale?: any
+): string {
+  // This function will be imported where date-fns and date-fns-tz are available
+  // It's a simple wrapper that needs to be called from components
+  // Actual implementation is in the component using toZonedTime from date-fns-tz
+  return formatStr; // Placeholder - actual implementation in component
+}

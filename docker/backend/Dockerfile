@@ -10,8 +10,8 @@ RUN npm install -g npm@latest
 COPY package*.json ./
 
 # Install dependencies
-# Use npm install instead of npm ci due to optional peer dependency resolution issues
-RUN npm install --frozen-lockfile
+# Use npm install with legacy-peer-deps to handle peer dependency conflicts
+RUN npm install --legacy-peer-deps
 
 # Copy source files
 COPY . .
@@ -21,6 +21,10 @@ RUN npx prisma generate
 
 # Build TypeScript
 RUN npm run build
+
+# Optional: Run tests in builder stage
+# Uncomment to run tests during build:
+# RUN npm run test
 
 # Stage 2: Production
 FROM node:23-slim

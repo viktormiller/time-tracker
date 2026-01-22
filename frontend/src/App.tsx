@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import {
   Upload, Loader2, RefreshCw, Filter, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown,
-  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut, Download, FileText
+  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut, Download, FileText, Plus
 } from 'lucide-react';
 import {
   format, parseISO, isSameDay, startOfToday, endOfToday,
@@ -13,6 +13,7 @@ import {
   startOfQuarter, endOfQuarter, startOfYear, endOfYear,
   subWeeks, subMonths, isWithinInterval, addDays, addWeeks, addMonths, addQuarters, addYears, eachDayOfInterval
 } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
 import { de } from 'date-fns/locale';
 
 // FIX: 'type DateRange' verhindert den Absturz, da es nur eine Typ-Definition ist
@@ -31,6 +32,8 @@ import { ThemeToggle } from './components/ThemeToggle';
 import { useTheme } from './hooks/useTheme';
 import { exportToCSV } from './lib/csv-export';
 import { CustomSelect } from './components/CustomSelect';
+import { AddEntry } from './pages/AddEntry';
+import { Settings as SettingsPage } from './pages/Settings';
 
 // --- TYPEN ---
 interface TimeEntry {
@@ -42,6 +45,8 @@ interface TimeEntry {
   source: string;
   createdAt: string;
   externalId: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
 }
 
 interface DailyStats {
@@ -50,6 +55,7 @@ interface DailyStats {
   totalHours: number;
   togglHours: number;
   tempoHours: number;
+  manualHours: number;
   projects: string[];
 }
 
@@ -97,6 +103,9 @@ function AppContent() {
 function AuthenticatedApp({ logout }: { logout: () => void }) {
   const { effectiveTheme } = useTheme();
   const isDarkMode = effectiveTheme === 'dark';
+
+  // --- VIEW STATE ---
+  const [currentView, setCurrentView] = useState<'dashboard' | 'add-entry' | 'settings'>('dashboard');
 
   // --- STATE ---
   const [entries, setEntries] = useState<TimeEntry[]>([]);
@@ -249,6 +258,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                     totalHours: 0,
                     togglHours: 0,
                     tempoHours: 0,
+                    manualHours: 0,
                     projects: []
                 });
             });
@@ -268,13 +278,19 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
           map.set(dateKey, {
               dateStr: dateKey,
               displayDate: format(dateObj, 'EE dd.MM', { locale: de }),
-              totalHours: 0, togglHours: 0, tempoHours: 0, projects: []
+              totalHours: 0, togglHours: 0, tempoHours: 0, manualHours: 0, projects: []
           });
       }
 
       const dayStat = map.get(dateKey)!;
       dayStat.totalHours += entry.duration;
-      entry.source === 'TOGGL' ? dayStat.togglHours += entry.duration : dayStat.tempoHours += entry.duration;
+      if (entry.source === 'TOGGL') {
+        dayStat.togglHours += entry.duration;
+      } else if (entry.source === 'TEMPO') {
+        dayStat.tempoHours += entry.duration;
+      } else if (entry.source === 'MANUAL') {
+        dayStat.manualHours += entry.duration;
+      }
       if (entry.project && !dayStat.projects.includes(entry.project)) dayStat.projects.push(entry.project);
     });
 
@@ -318,6 +334,11 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const uniqueProjects = useMemo(() => Array.from(new Set(entries.map(e => e.project).filter(Boolean))).sort(), [entries]);
 
   const handleSort = (key: SortKey) => setSortConfig(current => ({ key, direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc' }));
+
+  const handleAddEntrySuccess = () => {
+    fetchData();
+    setCurrentView('dashboard');
+  };
 
   const handleExportCSV = () => {
     if (filteredEntries.length === 0) {
@@ -392,6 +413,26 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
     catch (error) { alert('Fehler beim Upload.'); } finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
+  // Render Add Entry page if selected
+  if (currentView === 'add-entry') {
+    return (
+      <AddEntry
+        onBack={() => setCurrentView('dashboard')}
+        onSuccess={handleAddEntrySuccess}
+        existingProjects={uniqueProjects}
+      />
+    );
+  }
+
+  // Render Settings page if selected
+  if (currentView === 'settings') {
+    return (
+      <SettingsPage
+        onBack={() => setCurrentView('dashboard')}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-6 font-sans relative">
       {/* MODALS */}
@@ -424,6 +465,16 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
 
                <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
 
+               {/* SETTINGS BUTTON */}
+               <button
+                 onClick={() => setCurrentView('settings')}
+                 className="flex items-center gap-2 px-3 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition text-sm font-medium"
+                 title="Settings"
+               >
+                 <Settings size={18} />
+                 <span className="hidden md:inline">Settings</span>
+               </button>
+
                {/* LOGOUT BUTTON */}
                <button
                  onClick={logout}
@@ -453,6 +504,17 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                   <div className="w-px h-5 bg-blue-200 dark:bg-blue-700"></div>
                   <button onClick={() => setShowSyncModal('TEMPO')} className="px-2 py-2 text-blue-700 dark:text-white hover:bg-blue-100 dark:hover:bg-blue-800 rounded-r-md transition"><Settings size={18} /></button>
               </div>
+
+              <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
+
+              {/* ADD ENTRY BUTTON */}
+              <button
+                onClick={() => setCurrentView('add-entry')}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-sm text-sm"
+              >
+                <Plus size={16} />
+                Add Entry
+              </button>
 
               <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
               <button onClick={fetchData} className="p-2.5 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"><RefreshCw size={20} className={loading ? "animate-spin" : ""} /></button>
@@ -501,6 +563,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                     { value: 'ALL', label: 'Alle Quellen' },
                     { value: 'TOGGL', label: 'Toggl' },
                     { value: 'TEMPO', label: 'Tempo' },
+                    { value: 'MANUAL', label: 'Manual' },
                 ]}
                 icon={<Filter size={16} className="text-gray-400 dark:text-gray-500" />}
                 width="w-44"
@@ -548,9 +611,14 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                             <Cell key={`cell-toggl-${index}`} fill="#E57CD8" fillOpacity={selectedDay && entry.dateStr !== selectedDay ? 0.3 : 1} />
                         ))}
                     </Bar>
-                    <Bar name="Tempo" dataKey="tempoHours" stackId="a" fill="#3B82F6" radius={[4, 4, 0, 0]} cursor="pointer" onClick={handleBarClick}>
+                    <Bar name="Tempo" dataKey="tempoHours" stackId="a" fill="#3B82F6" radius={[0, 0, 0, 0]} cursor="pointer" onClick={handleBarClick}>
                         {aggregatedData.map((entry, index) => (
                             <Cell key={`cell-tempo-${index}`} fill="#3B82F6" fillOpacity={selectedDay && entry.dateStr !== selectedDay ? 0.3 : 1} />
+                        ))}
+                    </Bar>
+                    <Bar name="Manual" dataKey="manualHours" stackId="a" fill="#A855F7" radius={[4, 4, 0, 0]} cursor="pointer" onClick={handleBarClick}>
+                        {aggregatedData.map((entry, index) => (
+                            <Cell key={`cell-manual-${index}`} fill="#A855F7" fillOpacity={selectedDay && entry.dateStr !== selectedDay ? 0.3 : 1} />
                         ))}
                     </Bar>
                     <Line type="monotone" dataKey="totalHours" stroke="none" dot={false} activeDot={false} isAnimationActive={false}>
@@ -587,10 +655,26 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                       </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                      {tableEntries.map((entry) => (
+                      {tableEntries.map((entry) => {
+                        const timezone = getTimezone();
+                        const utcDate = parseISO(entry.date);
+                        const zonedDate = toZonedTime(utcDate, timezone);
+                        const formattedDate = format(zonedDate, 'EE dd.MM.yyyy HH:mm', { locale: de });
+
+                        return (
                           <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors group">
-                              <td className="px-6 py-3 text-gray-600 dark:text-gray-300">{format(parseISO(entry.date), 'EE dd.MM.yyyy HH:mm', { locale: de })}</td>
-                              <td className="px-6 py-3"><span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${entry.source === 'TOGGL' ? 'bg-pink-100 dark:bg-pink-900 text-pink-800 dark:text-pink-200' : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'}`}>{entry.source}</span></td>
+                              <td className="px-6 py-3 text-gray-600 dark:text-gray-300">{formattedDate}</td>
+                              <td className="px-6 py-3">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                  entry.source === 'TOGGL'
+                                    ? 'bg-pink-100 dark:bg-pink-900 text-pink-800 dark:text-pink-200'
+                                    : entry.source === 'MANUAL'
+                                    ? 'bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200'
+                                    : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
+                                }`}>
+                                  {entry.source}
+                                </span>
+                              </td>
                               <td className="px-6 py-3">
                                 <ProjectCell
                                   project={entry.project}
@@ -607,7 +691,8 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                                   </div>
                               </td>
                           </tr>
-                      ))}
+                        );
+                      })}
                   </tbody>
                   {tableEntries.length > 0 && (
                       <tfoot className="bg-gray-50 dark:bg-gray-700 sticky bottom-0 z-10 shadow-inner">
@@ -746,15 +831,54 @@ function SyncModal({ service, onClose, onSync, syncing }: { service: string, onC
 }
 
 function EditModal({ entry, onClose, onSave }: { entry: TimeEntry, onClose: () => void, onSave: (e: TimeEntry) => void }) {
-    const [formData, setFormData] = useState({ date: format(parseISO(entry.date), 'yyyy-MM-dd'), duration: entry.duration, project: entry.project, description: entry.description, source: entry.source });
-    const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSave({ ...entry, ...formData }); };
+    const isManual = entry.source === 'MANUAL';
+    const timezone = getTimezone();
+
+    // Convert UTC date to user's timezone for display
+    const utcDate = parseISO(entry.date);
+    const zonedDate = toZonedTime(utcDate, timezone);
+
+    const [formData, setFormData] = useState({
+        date: format(zonedDate, 'yyyy-MM-dd'),
+        duration: entry.duration,
+        project: entry.project,
+        description: entry.description,
+        source: entry.source,
+        startTime: entry.startTime || format(zonedDate, 'HH:mm'),
+        endTime: entry.endTime || ''
+    });
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+
+        // If editing a manual entry, send timezone to backend
+        if (isManual && formData.startTime) {
+            onSave({
+                ...entry,
+                ...formData,
+                timezone: timezone
+            } as any);
+        } else {
+            onSave({ ...entry, ...formData });
+        }
+    };
+
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
                 <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900"><h3 className="font-bold text-gray-800 dark:text-gray-100 text-lg">Eintrag bearbeiten</h3><button onClick={onClose} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"><X size={20} /></button></div>
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
                     <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Datum</label><input type="date" required value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 shadow-sm p-2.5 border" /></div>
-                    <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Dauer (Stunden)</label><input type="number" step="0.01" min="0.01" required value={formData.duration} onChange={e => setFormData({...formData, duration: parseFloat(e.target.value)})} className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 shadow-sm p-2.5 border" /></div>
+
+                    {isManual ? (
+                        <div className="grid grid-cols-2 gap-4">
+                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Startzeit</label><input type="time" required value={formData.startTime} onChange={e => setFormData({...formData, startTime: e.target.value})} className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 shadow-sm p-2.5 border" /></div>
+                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Endzeit</label><input type="time" required value={formData.endTime} onChange={e => setFormData({...formData, endTime: e.target.value})} className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 shadow-sm p-2.5 border" /></div>
+                        </div>
+                    ) : (
+                        <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Dauer (Stunden)</label><input type="number" step="0.01" min="0.01" required value={formData.duration} onChange={e => setFormData({...formData, duration: parseFloat(e.target.value)})} className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 shadow-sm p-2.5 border" /></div>
+                    )}
+
                     <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Projekt</label><input type="text" required value={formData.project} onChange={e => setFormData({...formData, project: e.target.value})} className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 shadow-sm p-2.5 border" /></div>
                     <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Beschreibung</label><textarea rows={3} value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 shadow-sm p-2.5 border" /></div>
                     <div className="pt-2 flex justify-end gap-3"><button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600">Abbrechen</button><button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 flex items-center gap-2"><Save size={16} /> Speichern</button></div>

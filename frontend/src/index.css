@@ -94,3 +94,15 @@ body {
 .dark .rdp-day_range_middle:hover {
   background-color: #1e40af !important; /* Blue-800 - slightly lighter on hover */
 }
+
+/* Fix TOGGL background color in dark mode - too bright */
+.dark .bg-pink-50 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(117 16 58 / 33%);
+}
+
+/* Fix text color for Project column in dark mode */
+.dark .text-gray-800 {
+  --tw-text-opacity: 1;
+  color: #9da3af;
+}
