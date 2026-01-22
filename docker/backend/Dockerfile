@@ -54,18 +54,24 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
+# Configure Puppeteer to skip Chromium download (use system Chromium)
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
+# Copy package files and install production deps only
+COPY --from=builder --chown=node:node /app/package*.json ./
+RUN npm ci --omit=dev --legacy-peer-deps
+
 # Copy built application from builder
 COPY --from=builder --chown=node:node /app/dist ./dist
-COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/prisma ./prisma
-COPY --from=builder --chown=node:node /app/package.json ./package.json
+
+# Copy generated Prisma client from builder
+COPY --from=builder --chown=node:node /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder --chown=node:node /app/node_modules/@prisma/client ./node_modules/@prisma/client
 
 # Set production environment
 ENV NODE_ENV=production
-
-# Configure Puppeteer to use system Chromium
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 # Create cache directory with proper permissions
 RUN mkdir -p /app/cache && chown -R node:node /app
