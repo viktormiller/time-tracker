@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-19)
 
 **Core value:** See all worked hours in one place — regardless of which system tracked them.
-**Current focus:** Phase 3: Data Quality & PostgreSQL Migration (complete) → Phase 4: UX Enhancements
+**Current focus:** Phase 4: UX Enhancements (complete) → Phase 5: Manual Entry & Provider Abstraction
 
 ## Current Position
 
-Phase: 4 of 7 (UX Enhancements) - COMPLETE
-Plan: 4 of 4 plans complete
-Status: Phase verified and complete
-Last activity: 2026-01-21 — Completed 04-01-PLAN.md
+Phase: 5 of 7 (Manual Entry & Provider Abstraction) - READY
+Plan: 0 plans (phase not yet planned)
+Status: Ready for planning
+Last activity: 2026-01-22 — Completed Phase 4 (UX Enhancements)
 
-Progress: [████████████░░] 61% (14/23 total plans complete)
+Progress: [███████████████░░░] 70% (16/23 total plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 14
-- Average duration: 5.9 min
-- Total execution time: 1.38 hours
+- Total plans completed: 16
+- Average duration: 74.5 min
+- Total execution time: 19.8 hours
 
 **By Phase:**
 
@@ -30,11 +30,11 @@ Progress: [████████████░░] 61% (14/23 total plans co
 | 01-authentication-a-security | 4/4 (complete) | 26 min | 6.5 min |
 | 02-containerization-a-deployment | 4/4 (complete) | 31 min | 7.8 min |
 | 03-data-quality-postgresql-migration | 4/4 (complete) | 35 min | 8.8 min |
-| 04-ux-enhancements | 4/4 (complete) | 10 min | 2.5 min |
+| 04-ux-enhancements | 4/4 (complete) | 1096 min | 274 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-02 (1min), 03-03 (3min), 03-04 (30min), 04-03 (3min), 04-01 (7min)
-- Trend: UX enhancements phase very fast (planning pays off)
+- Last 5 plans: 03-03 (3min), 03-04 (30min), 04-01 (7min), 04-02 (4min), 04-03 (3min), 04-04 (1082min)
+- Trend: Plan 04-04 extended significantly for comprehensive dark mode polish based on user feedback
 
 *Updated after each plan completion*
 
@@ -167,6 +167,30 @@ Recent decisions affecting current work:
 - Dynamic chart colors via isDarkMode variable instead of CSS-only approach
 - Dark mode palette: gray-900 for backgrounds, gray-800 for cards, gray-700 for inputs
 
+**From 04-02 (CSV Export):**
+- Sanitize CSV fields starting with =, +, -, @ by prefixing with single quote to prevent formula injection
+- Use German column headers (Datum, Stunden, Quelle, Beschreibung, Projekt) matching UI language
+- Include date range in filename: timetracker-YYYY-MM-DD-to-YYYY-MM-DD.csv
+- Alert user when no entries available instead of downloading empty CSV
+- Green button styling for export (vs indigo for import) for visual differentiation
+
+**From 04-03 (PDF Export Backend):**
+- Use Puppeteer for server-side PDF generation (better quality than client-side solutions)
+- Use system Chromium in Docker instead of bundled version (smaller image size, saves ~170MB)
+- German locale for date formatting using date-fns with de locale
+- HTML inline styles for PDF compatibility (no external CSS)
+- Escape HTML in user content to prevent XSS in PDF generation
+- Fastify logger object-first format: `fastify.log.error({ error }, 'message')`
+
+**From 04-04 (PDF Export Frontend & Dark Mode Polish):**
+- Use react-select for all dropdowns to ensure visual consistency
+- Apply gradient backgrounds to calendar range start/end for visual polish
+- Fix React hooks ordering by splitting auth check into separate component
+- Use inline styles for third-party components (TimezoneSelector) to match dark mode
+- Add react-select dependency for professional dropdown styling with keyboard navigation
+- Use CSS important overrides for third-party calendar library dark mode
+- Blob download pattern: axios blob responseType + URL.createObjectURL for binary files
+
 ### Pending Todos
 
 None yet.
@@ -195,7 +219,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-21T05:43:00Z (plan execution)
-Stopped at: Completed 04-01-PLAN.md (Dark Mode Toggle)
+Last session: 2026-01-22T08:53:41Z (phase verification and completion)
+Stopped at: Completed Phase 4 (UX Enhancements) with verification
 Resume file: None
-Next: Phase 4 complete - ready for Phase 5
+Next: Phase 5 planning (Manual Entry & Provider Abstraction)

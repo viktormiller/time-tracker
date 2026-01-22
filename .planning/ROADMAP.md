@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Authentication & Security** - Single-user login with JWT protection
 - [x] **Phase 2: Containerization & Deployment** - Docker infrastructure for production deployment
 - [x] **Phase 3: Data Quality & PostgreSQL Migration** - Production database with robust ID handling
-- [ ] **Phase 4: UX Enhancements** - Dark mode and export capabilities
+- [x] **Phase 4: UX Enhancements** - Dark mode and export capabilities
 - [ ] **Phase 5: Manual Entry & Provider Abstraction** - Direct entry creation and extensible architecture
 - [ ] **Phase 6: CLI Tool** - Command-line access for quick time checks
 - [ ] **Phase 7: Future Sources** - Clockify integration and provider pattern
@@ -89,10 +89,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Dark mode implementation (theme toggle, FOUC prevention, component styling)
-- [ ] 04-02-PLAN.md — CSV export (client-side generation with sanitization)
-- [ ] 04-03-PLAN.md — PDF export backend (Puppeteer service, API endpoint, Docker config)
-- [ ] 04-04-PLAN.md — PDF export frontend and end-to-end verification
+- [x] 04-01-PLAN.md — Dark mode implementation (theme toggle, FOUC prevention, component styling)
+- [x] 04-02-PLAN.md — CSV export (client-side generation with sanitization)
+- [x] 04-03-PLAN.md — PDF export backend (Puppeteer service, API endpoint, Docker config)
+- [x] 04-04-PLAN.md — PDF export frontend and end-to-end verification
 
 ### Phase 5: Manual Entry & Provider Abstraction
 **Goal**: Users can add entries directly and system is ready for new sources
@@ -149,7 +149,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 1. Authentication & Security | 4/4 | Complete | 2026-01-21 |
 | 2. Containerization & Deployment | 4/4 | Complete | 2026-01-21 |
 | 3. Data Quality & PostgreSQL Migration | 4/4 | Complete | 2026-01-21 |
-| 4. UX Enhancements | 0/4 | Planned | - |
+| 4. UX Enhancements | 4/4 | Complete | 2026-01-22 |
 | 5. Manual Entry & Provider Abstraction | 0/? | Not started | - |
 | 6. CLI Tool | 0/? | Not started | - |
 | 7. Future Sources | 0/? | Not started | - |
