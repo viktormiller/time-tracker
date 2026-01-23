@@ -2,6 +2,7 @@ import axios from 'axios';
 import { PrismaClient } from '@prisma/client';
 import { BaseTimeProvider } from './base.provider';
 import { SyncOptions, SyncResult, RawTimeEntry } from './provider.interface';
+import { loadSecret } from '../utils/secrets';
 
 export class TogglProvider extends BaseTimeProvider {
   constructor(prisma: PrismaClient) {
@@ -60,8 +61,8 @@ export class TogglProvider extends BaseTimeProvider {
   }
 
   async fetchFromAPI(startDate: string, endDate: string): Promise<any[]> {
-    const token = process.env.TOGGL_API_TOKEN;
-    if (!token) throw new Error('TOGGL_API_TOKEN is missing in .env');
+    const token = loadSecret('toggl_api_token', { required: false });
+    if (!token) throw new Error('TOGGL_API_TOKEN not configured (check environment or Docker secrets)');
 
     const params = {
       start_date: startDate,
@@ -104,7 +105,7 @@ export class TogglProvider extends BaseTimeProvider {
   }
 
   async validate(): Promise<boolean> {
-    const token = process.env.TOGGL_API_TOKEN;
+    const token = loadSecret('toggl_api_token', { required: false });
     if (!token) return false;
 
     try {
