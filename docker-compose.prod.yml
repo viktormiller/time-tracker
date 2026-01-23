@@ -25,10 +25,7 @@ services:
         node dist/server.js
       "
 
-  frontend:
-    ports:
-      - "80:80"
-      - "443:443"
+  # frontend uses port 8080 from base config (nginx reverse proxy handles 80/443)
 
 secrets:
   jwt_secret:
