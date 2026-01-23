@@ -74,67 +74,54 @@ The frontend will be available at `http://localhost:5173`. API requests to `/api
 
 ### Environment Configuration
 
-1. **Create production environment file** (`.env.prod` in root):
+**Production** uses Docker Secrets exclusively (no `.env.prod` needed).
 
-```bash
-# Database Configuration
-POSTGRES_USER=timetracker
-POSTGRES_PASSWORD=your_secure_password_here
-POSTGRES_DB=timetracker
-DATABASE_URL=postgresql://timetracker:your_secure_password_here@db:5432/timetracker
+**Development** uses a single `backend/.env` file.
 
-# Backend Configuration
-NODE_ENV=production
-PORT=3000
-
-# JWT Secret (generate a strong random string)
-JWT_SECRET=your_jwt_secret_here
-
-# API Keys (if using external sync)
-TOGGL_API_TOKEN=your_toggl_token_here
-TEMPO_API_TOKEN=your_tempo_token_here
-JIRA_URL=your_jira_url_here
-```
-
-2. **Ensure environment files exist**:
-   - `.env.prod` in root directory (production settings)
-   - `.env` in backend directory (development settings)
+Configure your environment by creating the appropriate secret files (production) or environment variables (development).
 
 ### Docker Secrets Setup
 
-Production deployment uses Docker secrets for sensitive data. Create the following files in `docker/secrets/`:
+Production deployment uses Docker secrets for ALL sensitive data (no environment variables needed). Create the following files in `docker/secrets/`:
 
 ```bash
 # Create secrets directory if it doesn't exist
 mkdir -p docker/secrets
 
-# Generate JWT secret (64 random bytes, hex encoded)
-openssl rand -hex 64 > docker/secrets/jwt_secret
+# Generate JWT secret (32 bytes = 64 hex chars)
+openssl rand -hex 32 > docker/secrets/jwt_secret
 
-# Generate session secret (64 random bytes, hex encoded)
-openssl rand -hex 64 > docker/secrets/session_secret
+# Generate session secret (32 bytes = 64 hex chars)
+openssl rand -hex 32 > docker/secrets/session_secret
 
 # Set database password (use a strong password)
 echo "your_secure_db_password" > docker/secrets/db_password
 
-# Generate admin password hash (requires bcrypt)
-# Option 1: Use the helper script
-cd docker/secrets && npm install bcrypt && node -e "console.log(require('bcrypt').hashSync('your_admin_password', 10))" > admin_password_hash
+# Generate admin password hash (requires bcrypt, cost 10)
+npx bcrypt-cli hash "your_admin_password" > docker/secrets/admin_password_hash
 
-# Option 2: Generate hash online at https://bcrypt-generator.com/ and save to file
-echo '$2b$10$your_bcrypt_hash_here' > docker/secrets/admin_password_hash
+# Add Toggl API token (get from https://track.toggl.com/profile)
+echo "your_toggl_api_token" > docker/secrets/toggl_api_token
+
+# Add Tempo API token (get from Jira Tempo settings)
+echo "your_tempo_api_token" > docker/secrets/tempo_api_token
 ```
 
 **Required secret files:**
 
 | File | Purpose | How to Generate |
 |------|---------|-----------------|
-| `jwt_secret` | JWT token signing | `openssl rand -hex 64` |
-| `session_secret` | Session encryption | `openssl rand -hex 64` |
+| `jwt_secret` | JWT token signing | `openssl rand -hex 32` |
+| `session_secret` | Session encryption | `openssl rand -hex 32` |
 | `db_password` | PostgreSQL password | Choose a strong password |
-| `admin_password_hash` | Admin login (bcrypt) | Hash with bcrypt (cost 10) |
+| `admin_password_hash` | Admin login (bcrypt) | `npx bcrypt-cli hash "password"` |
+| `toggl_api_token` | Toggl API access | From Toggl settings |
+| `tempo_api_token` | Tempo API access | From Tempo settings |
 
-**Important:** Never commit these files to git. The `docker/secrets/` directory has a `.gitkeep` file but secrets are gitignored.
+**Important:**
+- Never commit these files to git (`.gitignore` prevents this)
+- The secrets must be 32 bytes (64 hex chars) for JWT and session
+- API tokens are optional - only needed if using those integrations
 
 ### Build and Deploy
 
