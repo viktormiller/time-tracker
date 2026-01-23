@@ -159,14 +159,14 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml down
 
 | Service | Image Size | Ports | Description |
 |---------|-----------|-------|-------------|
-| **Frontend** | 62.3MB | 8080 | Nginx serving built React app |
+| **Frontend** | 62.3MB | 8088 | Nginx serving built React app |
 | **Backend** | 1.43GB | 3000 (internal) | Fastify API server |
 | **Database** | ~100MB | 5432 | PostgreSQL 17 |
 
 ### Access Points
 
-- **Frontend**: http://localhost:8080 (use nginx reverse proxy for ports 80/443)
-- **Backend API**: http://localhost:8080/api (proxied through frontend)
+- **Frontend**: http://localhost:8088 (use nginx reverse proxy for ports 80/443)
+- **Backend API**: http://localhost:8088/api (proxied through frontend)
 - **Database**: localhost:5432 (external access)
 
 ### Database Migrations

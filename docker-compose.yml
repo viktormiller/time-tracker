@@ -56,7 +56,7 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "8080:80"
+      - "8088:80"
     networks:
       - frontend-network
 
