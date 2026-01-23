@@ -2,14 +2,14 @@ import fp from 'fastify-plugin';
 import fastifySecureSession from '@fastify/secure-session';
 import fastifyCookie from '@fastify/cookie';
 import { FastifyInstance } from 'fastify';
-import { loadSecret } from './auth';
+import { loadSecret } from '../utils/secrets';
 
 /**
  * Secure session plugin
  * Registers @fastify/cookie and @fastify/secure-session for HttpOnly cookie sessions
  */
 export default fp(async (fastify: FastifyInstance) => {
-  const sessionSecret = loadSecret('session_secret');
+  const sessionSecret = loadSecret('session_secret', { minLength: 32 })!;
 
   // @fastify/secure-session requires secret as Buffer (32 bytes for libsodium)
   // Our hex string is 64 chars = 32 bytes

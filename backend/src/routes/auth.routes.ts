@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import bcrypt from 'bcrypt';
-import { loadSecret } from '../plugins/auth';
+import { loadSecret } from '../utils/secrets';
 
 // Extend session data interface
 declare module '@fastify/secure-session' {
@@ -46,11 +46,15 @@ export default async function (fastify: FastifyInstance) {
     }
 
     // Load admin password hash
-    let adminPasswordHash: string;
+    let adminPasswordHash: string | undefined;
     try {
       adminPasswordHash = loadSecret('admin_password_hash');
     } catch (err) {
       fastify.log.error({ err }, 'Failed to load admin password hash');
+      return reply.code(500).send({ error: 'Server configuration error' });
+    }
+
+    if (!adminPasswordHash) {
       return reply.code(500).send({ error: 'Server configuration error' });
     }
 
@@ -204,11 +208,15 @@ export default async function (fastify: FastifyInstance) {
       }
 
       // Load admin password hash
-      let adminPasswordHash: string;
+      let adminPasswordHash: string | undefined;
       try {
         adminPasswordHash = loadSecret('admin_password_hash');
       } catch (err) {
         fastify.log.error({ err }, 'Failed to load admin password hash');
+        return reply.code(500).send({ error: 'Server configuration error' });
+      }
+
+      if (!adminPasswordHash) {
         return reply.code(500).send({ error: 'Server configuration error' });
       }
 
