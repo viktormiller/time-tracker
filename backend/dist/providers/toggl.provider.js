@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TogglProvider = void 0;
 const axios_1 = __importDefault(require("axios"));
 const base_provider_1 = require("./base.provider");
+const secrets_1 = require("../utils/secrets");
 class TogglProvider extends base_provider_1.BaseTimeProvider {
     constructor(prisma) {
         super(prisma, 'TOGGL', 'toggl_cache.json');
@@ -51,9 +52,9 @@ class TogglProvider extends base_provider_1.BaseTimeProvider {
         };
     }
     async fetchFromAPI(startDate, endDate) {
-        const token = process.env.TOGGL_API_TOKEN;
+        const token = (0, secrets_1.loadSecret)('toggl_api_token', { required: false });
         if (!token)
-            throw new Error('TOGGL_API_TOKEN is missing in .env');
+            throw new Error('TOGGL_API_TOKEN not configured (check environment or Docker secrets)');
         const params = {
             start_date: startDate,
             end_date: endDate
@@ -91,7 +92,7 @@ class TogglProvider extends base_provider_1.BaseTimeProvider {
         };
     }
     async validate() {
-        const token = process.env.TOGGL_API_TOKEN;
+        const token = (0, secrets_1.loadSecret)('toggl_api_token', { required: false });
         if (!token)
             return false;
         try {

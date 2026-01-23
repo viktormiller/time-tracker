@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TempoProvider = void 0;
 const axios_1 = __importDefault(require("axios"));
 const base_provider_1 = require("./base.provider");
+const secrets_1 = require("../utils/secrets");
 class TempoProvider extends base_provider_1.BaseTimeProvider {
     constructor(prisma) {
         super(prisma, 'TEMPO', 'tempo_cache.json');
@@ -56,9 +57,9 @@ class TempoProvider extends base_provider_1.BaseTimeProvider {
         };
     }
     async fetchFromAPI(startDate, endDate) {
-        const token = process.env.TEMPO_API_TOKEN;
+        const token = (0, secrets_1.loadSecret)('tempo_api_token', { required: false });
         if (!token)
-            throw new Error('TEMPO_API_TOKEN is missing in .env');
+            throw new Error('TEMPO_API_TOKEN not configured (check environment or Docker secrets)');
         try {
             // Tempo API v4
             const response = await axios_1.default.get('https://api.tempo.io/4/worklogs', {
@@ -114,7 +115,7 @@ class TempoProvider extends base_provider_1.BaseTimeProvider {
         };
     }
     async validate() {
-        const token = process.env.TEMPO_API_TOKEN;
+        const token = (0, secrets_1.loadSecret)('tempo_api_token', { required: false });
         if (!token)
             return false;
         try {

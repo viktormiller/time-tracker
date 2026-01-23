@@ -6,13 +6,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const fastify_plugin_1 = __importDefault(require("fastify-plugin"));
 const secure_session_1 = __importDefault(require("@fastify/secure-session"));
 const cookie_1 = __importDefault(require("@fastify/cookie"));
-const auth_1 = require("./auth");
+const secrets_1 = require("../utils/secrets");
 /**
  * Secure session plugin
  * Registers @fastify/cookie and @fastify/secure-session for HttpOnly cookie sessions
  */
 exports.default = (0, fastify_plugin_1.default)(async (fastify) => {
-    const sessionSecret = (0, auth_1.loadSecret)('session_secret');
+    const sessionSecret = (0, secrets_1.loadSecret)('session_secret', { minLength: 32 });
     // @fastify/secure-session requires secret as Buffer (32 bytes for libsodium)
     // Our hex string is 64 chars = 32 bytes
     const secretBuffer = Buffer.from(sessionSecret, 'hex');

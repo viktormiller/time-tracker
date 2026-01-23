@@ -5,7 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.default = default_1;
 const bcrypt_1 = __importDefault(require("bcrypt"));
-const auth_1 = require("../plugins/auth");
+const secrets_1 = require("../utils/secrets");
 /**
  * Authentication routes
  * Provides login, refresh, and logout endpoints
@@ -36,10 +36,13 @@ async function default_1(fastify) {
         // Load admin password hash
         let adminPasswordHash;
         try {
-            adminPasswordHash = (0, auth_1.loadSecret)('admin_password_hash');
+            adminPasswordHash = (0, secrets_1.loadSecret)('admin_password_hash');
         }
         catch (err) {
             fastify.log.error({ err }, 'Failed to load admin password hash');
+            return reply.code(500).send({ error: 'Server configuration error' });
+        }
+        if (!adminPasswordHash) {
             return reply.code(500).send({ error: 'Server configuration error' });
         }
         // Verify password with bcrypt
@@ -152,10 +155,13 @@ async function default_1(fastify) {
         // Load admin password hash
         let adminPasswordHash;
         try {
-            adminPasswordHash = (0, auth_1.loadSecret)('admin_password_hash');
+            adminPasswordHash = (0, secrets_1.loadSecret)('admin_password_hash');
         }
         catch (err) {
             fastify.log.error({ err }, 'Failed to load admin password hash');
+            return reply.code(500).send({ error: 'Server configuration error' });
+        }
+        if (!adminPasswordHash) {
             return reply.code(500).send({ error: 'Server configuration error' });
         }
         // Verify password with bcrypt
