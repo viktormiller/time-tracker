@@ -100,6 +100,42 @@ JIRA_URL=your_jira_url_here
    - `.env.prod` in root directory (production settings)
    - `.env` in backend directory (development settings)
 
+### Docker Secrets Setup
+
+Production deployment uses Docker secrets for sensitive data. Create the following files in `docker/secrets/`:
+
+```bash
+# Create secrets directory if it doesn't exist
+mkdir -p docker/secrets
+
+# Generate JWT secret (64 random bytes, hex encoded)
+openssl rand -hex 64 > docker/secrets/jwt_secret
+
+# Generate session secret (64 random bytes, hex encoded)
+openssl rand -hex 64 > docker/secrets/session_secret
+
+# Set database password (use a strong password)
+echo "your_secure_db_password" > docker/secrets/db_password
+
+# Generate admin password hash (requires bcrypt)
+# Option 1: Use the helper script
+cd docker/secrets && npm install bcrypt && node -e "console.log(require('bcrypt').hashSync('your_admin_password', 10))" > admin_password_hash
+
+# Option 2: Generate hash online at https://bcrypt-generator.com/ and save to file
+echo '$2b$10$your_bcrypt_hash_here' > docker/secrets/admin_password_hash
+```
+
+**Required secret files:**
+
+| File | Purpose | How to Generate |
+|------|---------|-----------------|
+| `jwt_secret` | JWT token signing | `openssl rand -hex 64` |
+| `session_secret` | Session encryption | `openssl rand -hex 64` |
+| `db_password` | PostgreSQL password | Choose a strong password |
+| `admin_password_hash` | Admin login (bcrypt) | Hash with bcrypt (cost 10) |
+
+**Important:** Never commit these files to git. The `docker/secrets/` directory has a `.gitkeep` file but secrets are gitignored.
+
 ### Build and Deploy
 
 ```bash
@@ -202,18 +238,36 @@ docker exec -it time-tracker-db-1 psql -U timetracker -d timetracker
 docker compose -f docker-compose.yml -f docker-compose.prod.yml down -v
 ```
 
-## Database Schema
+## Database (Prisma ORM)
 
-The database schema is defined in `backend/prisma/schema.prisma`. Key models:
+The application uses **Prisma ORM** to manage the database schema and queries. Prisma is used in both development and production.
 
-- `TimeEntry`: Main time tracking entries with source, project, duration, and metadata
-- `User`: User authentication and profiles (if enabled)
+**Schema location:** `backend/prisma/schema.prisma`
 
-To view the schema or make changes, edit the Prisma schema file and run:
+**Key models:**
+- `TimeEntry`: Time tracking entries with source, project, duration, and metadata
+- `User`: User authentication and profiles
 
+### Development vs Production
+
+| Environment | Database | Migration Command |
+|-------------|----------|-------------------|
+| Development | SQLite | `npx prisma migrate dev` |
+| Production | PostgreSQL | `npx prisma migrate deploy` (runs automatically on container start) |
+
+**Development workflow** (local only):
 ```bash
 cd backend
+# Create a new migration after schema changes
 npx prisma migrate dev --name your_migration_name
+
+# View database with GUI
+npx prisma studio
+```
+
+**Production:** Migrations run automatically when the backend container starts. To run manually:
+```bash
+docker exec time-tracker-backend-1 npx prisma migrate deploy
 ```
 
 ## API Documentation
@@ -233,4 +287,4 @@ For detailed API documentation, see `backend/src/server.ts`.
 
 ## License
 
-[Your License Here]
+This project is open source and available under the [MIT License](LICENSE).
