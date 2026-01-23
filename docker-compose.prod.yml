@@ -8,7 +8,6 @@ services:
       - db_password
 
   backend:
-    env_file: .env.prod
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://timetracker:DOCKER-SECRET@db:5432/timetracker
@@ -17,6 +16,8 @@ services:
       - session_secret
       - admin_password_hash
       - db_password
+      - toggl_api_token
+      - tempo_api_token
     # Override to read db_password from secret at runtime
     command: >
       sh -c "
@@ -37,3 +38,7 @@ secrets:
     file: ./docker/secrets/admin_password_hash
   db_password:
     file: ./docker/secrets/db_password
+  toggl_api_token:
+    file: ./docker/secrets/toggl_api_token
+  tempo_api_token:
+    file: ./docker/secrets/tempo_api_token
