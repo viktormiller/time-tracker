@@ -16,9 +16,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Containerization & Deployment** - Docker infrastructure for production deployment
 - [x] **Phase 3: Data Quality & PostgreSQL Migration** - Production database with robust ID handling
 - [x] **Phase 4: UX Enhancements** - Dark mode and export capabilities
-- [ ] **Phase 5: Manual Entry & Provider Abstraction** - Direct entry creation and extensible architecture
-- [ ] **Phase 6: CLI Tool** - Command-line access for quick time checks
-- [ ] **Phase 7: Future Sources** - Clockify integration and provider pattern
+- [x] **Phase 5: Manual Entry & Provider Abstraction** - Direct entry creation and extensible architecture
+- [x] **Phase 6: CLI Tool** - Command-line access for quick time checks
 
 ## Phase Details
 
@@ -104,10 +103,10 @@ Plans:
   3. Manual entries appear immediately in dashboard
   4. Unified Provider interface exists for all time sources
   5. Adding new time source requires implementing single interface
-**Plans**: TBD
+**Plans**: Pre-existing (implemented before GSD tracking)
 
 Plans:
-- [ ] 05-01: TBD
+- [x] Pre-existing implementation — AddEntry UI, Provider interface, BaseTimeProvider
 
 ### Phase 6: CLI Tool
 **Goal**: User can check worked hours from terminal without browser
@@ -119,33 +118,15 @@ Plans:
   3. User can run `timetracker sync` to trigger backend sync
   4. CLI authenticates with backend API using JWT
   5. CLI config stored securely in ~/.timetracker/config.yaml
-**Plans**: 4 plans
+**Plans**: Pre-existing (implemented before GSD tracking)
 
 Plans:
-- [ ] 06-01-PLAN.md — Backend summary endpoints and unified sync API
-- [ ] 06-02-PLAN.md — CLI-specific authentication endpoints
-- [ ] 06-03-PLAN.md — Go CLI scaffolding and login command
-- [ ] 06-04-PLAN.md — Today, week, and sync commands
-
-### Phase 7: Future Sources
-**Goal**: System supports Clockify and makes adding sources trivial
-**Depends on**: Phase 6
-**Requirements**: REQ-014, (REQ-015 already in Phase 5)
-**Success Criteria** (what must be TRUE):
-  1. User can configure Clockify API key in settings
-  2. Clockify entries sync automatically with other sources
-  3. Clockify entries support same operations as Toggl/Tempo
-  4. Documentation exists for adding new time tracking sources
-  5. New provider can be added in less than 1 day of work
-**Plans**: TBD
-
-Plans:
-- [ ] 07-01: TBD
+- [x] Pre-existing implementation — Go CLI with login, today, week, sync commands + backend summary endpoints
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -153,6 +134,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7
 | 2. Containerization & Deployment | 4/4 | Complete | 2026-01-21 |
 | 3. Data Quality & PostgreSQL Migration | 4/4 | Complete | 2026-01-21 |
 | 4. UX Enhancements | 4/4 | Complete | 2026-01-22 |
-| 5. Manual Entry & Provider Abstraction | 0/? | Not started | - |
-| 6. CLI Tool | 0/4 | Planned | - |
-| 7. Future Sources | 0/? | Not started | - |
+| 5. Manual Entry & Provider Abstraction | Pre-existing | Complete | 2026-01-29 |
+| 6. CLI Tool | Pre-existing | Complete | 2026-01-29 |

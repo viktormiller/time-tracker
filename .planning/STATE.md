@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-19)
 
 **Core value:** See all worked hours in one place — regardless of which system tracked them.
-**Current focus:** Phase 4: UX Enhancements (complete) → Phase 5: Manual Entry & Provider Abstraction
+**Current focus:** All planned phases complete
 
 ## Current Position
 
-Phase: 5 of 7 (Manual Entry & Provider Abstraction) - READY
-Plan: 0 plans (phase not yet planned)
-Status: Ready for planning
-Last activity: 2026-01-22 — Completed Phase 4 (UX Enhancements)
+Phase: 6 of 6 (All phases complete)
+Plan: All 16 plans completed
+Status: Milestone complete - ready for new phase planning
+Last activity: 2026-01-29 — Removed Phase 7 (Future Sources - deferred)
 
-Progress: [███████████████░░░] 70% (16/23 total plans complete)
+Progress: [████████████████████] 100% (18/18 total phases complete, 2 pre-existing)
 
 ## Performance Metrics
 
@@ -31,6 +31,8 @@ Progress: [███████████████░░░] 70% (16/23 to
 | 02-containerization-a-deployment | 4/4 (complete) | 31 min | 7.8 min |
 | 03-data-quality-postgresql-migration | 4/4 (complete) | 35 min | 8.8 min |
 | 04-ux-enhancements | 4/4 (complete) | 1096 min | 274 min |
+| 05-manual-entry-a-provider-abstraction | Pre-existing | - | - |
+| 06-cli-tool | Pre-existing | - | - |
 
 **Recent Trend:**
 - Last 5 plans: 03-03 (3min), 03-04 (30min), 04-01 (7min), 04-02 (4min), 04-03 (3min), 04-04 (1082min)
@@ -191,6 +193,24 @@ Recent decisions affecting current work:
 - Use CSS important overrides for third-party calendar library dark mode
 - Blob download pattern: axios blob responseType + URL.createObjectURL for binary files
 
+**From Phase 5 (Manual Entry & Provider Abstraction - Pre-existing):**
+- TimeProvider interface defines sync(), validate(), getName(), getCachePath() methods
+- BaseTimeProvider abstract class provides shared logic: cache, upsert, date range calculation
+- Provider pattern enables adding new time sources by extending BaseTimeProvider
+- Manual entry form uses react-hook-form with zod validation for type safety
+- Duration calculated automatically from start/end time with live preview
+- Project field autocomplete from existing projects in database
+- Manual entries tagged with "MANUAL" source for distinction from API syncs
+
+**From Phase 6 (CLI Tool - Pre-existing):**
+- Go CLI using cobra framework for command structure
+- Config stored at ~/.timetracker/config.yaml with 0600 permissions (read-only by user)
+- JWT authentication with access/refresh token pair stored in config
+- CLI commands: login (interactive with password masking), today, week, sync
+- Backend summary endpoints: GET /api/entries/summary/today, GET /api/entries/summary/week
+- POST /api/sync endpoint triggers all provider syncs with optional force flag
+- Table display for week command using custom display package
+
 ### Pending Todos
 
 None yet.
@@ -219,7 +239,7 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-22T08:53:41Z (phase verification and completion)
-Stopped at: Completed Phase 4 (UX Enhancements) with verification
+Last session: 2026-01-29 (roadmap cleanup)
+Stopped at: Removed Phase 7 (Future Sources - Clockify) from roadmap
 Resume file: None
-Next: Phase 5 planning (Manual Entry & Provider Abstraction)
+Next: Ready for new phase planning
