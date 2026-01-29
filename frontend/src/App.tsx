@@ -34,6 +34,7 @@ import { exportToCSV } from './lib/csv-export';
 import { CustomSelect } from './components/CustomSelect';
 import { AddEntry } from './pages/AddEntry';
 import { Settings as SettingsPage } from './pages/Settings';
+import { Estimates } from './pages/Estimates';
 
 // --- TYPEN ---
 interface TimeEntry {
@@ -105,7 +106,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const isDarkMode = effectiveTheme === 'dark';
 
   // --- VIEW STATE ---
-  const [currentView, setCurrentView] = useState<'dashboard' | 'add-entry' | 'settings'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'add-entry' | 'settings' | 'estimates'>('dashboard');
 
   // --- STATE ---
   const [entries, setEntries] = useState<TimeEntry[]>([]);
@@ -433,6 +434,15 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
     );
   }
 
+  // Render Estimates page if selected
+  if (currentView === 'estimates') {
+    return (
+      <Estimates
+        onBack={() => setCurrentView('dashboard')}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-6 font-sans relative">
       {/* MODALS */}
@@ -464,6 +474,16 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                <ThemeToggle />
 
                <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
+
+               {/* ESTIMATES BUTTON */}
+               <button
+                 onClick={() => setCurrentView('estimates')}
+                 className="flex items-center gap-2 px-3 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition text-sm font-medium"
+                 title="Schätzungen"
+               >
+                 <Layers size={18} />
+                 <span className="hidden md:inline">Schätzungen</span>
+               </button>
 
                {/* SETTINGS BUTTON */}
                <button

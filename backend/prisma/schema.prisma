@@ -26,3 +26,23 @@ model TimeEntry {
   @@unique([source, externalId])
   @@index([date])
 }
+
+model ProjectEstimate {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clientName     String
+  name           String
+  estimatedHours Float
+  notes          String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(6)
+  projects       EstimateProject[]
+}
+
+model EstimateProject {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  estimateId  String          @db.Uuid
+  projectName String
+  estimate    ProjectEstimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  @@unique([estimateId, projectName])
+  @@index([projectName])
+}

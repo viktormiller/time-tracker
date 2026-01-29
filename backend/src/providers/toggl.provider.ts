@@ -5,6 +5,8 @@ import { SyncOptions, SyncResult, RawTimeEntry } from './provider.interface';
 import { loadSecret } from '../utils/secrets';
 
 export class TogglProvider extends BaseTimeProvider {
+  private projectCache: Map<number, string> = new Map();
+
   constructor(prisma: PrismaClient) {
     super(prisma, 'TOGGL', 'toggl_cache.json');
   }
@@ -13,6 +15,9 @@ export class TogglProvider extends BaseTimeProvider {
     const { forceRefresh = false, customStart, customEnd } = options;
 
     console.log(`[Toggl Service] Request: Force=${forceRefresh}, Start=${customStart}, End=${customEnd}`);
+
+    // Fetch project names for mapping
+    await this.fetchProjectNames();
 
     let rawEntries: any[] = [];
     let usedCache = false;
@@ -60,6 +65,83 @@ export class TogglProvider extends BaseTimeProvider {
     };
   }
 
+  async fetchProjectNames(): Promise<void> {
+    const token = loadSecret('toggl_api_token', { required: false });
+    if (!token) {
+      console.warn('[Toggl] No API token, skipping project name fetch');
+      return;
+    }
+
+    try {
+      console.log('[Toggl] Fetching project names...');
+
+      // First, get the user's workspace(s)
+      const meResponse = await axios.get('https://api.track.toggl.com/api/v9/me', {
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${token}:api_token`).toString('base64')}`
+        }
+      });
+
+      console.log('[Toggl] User data received:', {
+        defaultWorkspaceId: meResponse.data.default_workspace_id,
+        workspacesCount: meResponse.data.workspaces?.length || 0
+      });
+
+      const workspaces = meResponse.data.workspaces || [];
+
+      if (workspaces.length === 0) {
+        console.warn('[Toggl] No workspaces found');
+        return;
+      }
+
+      // Fetch projects for each workspace
+      for (const workspace of workspaces) {
+        console.log(`[Toggl] Fetching projects for workspace ${workspace.id} (${workspace.name})...`);
+
+        try {
+          const projectsResponse = await axios.get(
+            `https://api.track.toggl.com/api/v9/workspaces/${workspace.id}/projects`,
+            {
+              headers: {
+                Authorization: `Basic ${Buffer.from(`${token}:api_token`).toString('base64')}`
+              }
+            }
+          );
+
+          const projects = projectsResponse.data || [];
+          console.log(`[Toggl] Found ${projects.length} projects in workspace ${workspace.name}`);
+
+          projects.forEach((project: any) => {
+            console.log(`[Toggl] Caching project: ${project.id} -> ${project.name}`);
+            this.projectCache.set(project.id, project.name);
+          });
+        } catch (error) {
+          if (axios.isAxiosError(error)) {
+            console.error(`[Toggl] Error fetching projects for workspace ${workspace.id}:`, {
+              status: error.response?.status,
+              statusText: error.response?.statusText,
+              data: error.response?.data
+            });
+          } else {
+            console.error(`[Toggl] Error fetching projects for workspace ${workspace.id}:`, error);
+          }
+        }
+      }
+
+      console.log(`[Toggl] Loaded ${this.projectCache.size} project names total`);
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        console.error('[Toggl] Error fetching user data:', {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data
+        });
+      } else {
+        console.error('[Toggl] Error fetching project names:', error);
+      }
+    }
+  }
+
   async fetchFromAPI(startDate: string, endDate: string): Promise<any[]> {
     const token = loadSecret('toggl_api_token', { required: false });
     if (!token) throw new Error('TOGGL_API_TOKEN not configured (check environment or Docker secrets)');
@@ -93,7 +175,12 @@ export class TogglProvider extends BaseTimeProvider {
 
   transformEntry(rawEntry: any): RawTimeEntry {
     const durationHours = rawEntry.duration / 3600;
-    const projectName = rawEntry.project_id ? `Proj-${rawEntry.project_id}` : 'No Project';
+
+    // Use real project name from cache if available, otherwise fall back to ID
+    let projectName = 'No Project';
+    if (rawEntry.project_id) {
+      projectName = this.projectCache.get(rawEntry.project_id) || `Proj-${rawEntry.project_id}`;
+    }
 
     return {
       externalId: rawEntry.id.toString(),
