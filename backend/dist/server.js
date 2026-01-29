@@ -17,6 +17,7 @@ const security_1 = __importDefault(require("./plugins/security"));
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const export_routes_1 = __importDefault(require("./routes/export.routes"));
 const summary_routes_1 = __importDefault(require("./routes/summary.routes"));
+const estimate_routes_js_1 = require("./routes/estimate.routes.js");
 const time_entry_schema_1 = require("./schemas/time-entry.schema");
 const date_fns_tz_1 = require("date-fns-tz");
 const prisma = new client_1.PrismaClient();
@@ -52,6 +53,8 @@ app.register(async (protectedRoutes) => {
     protectedRoutes.register(export_routes_1.default);
     // Register summary routes
     protectedRoutes.register(summary_routes_1.default);
+    // Register estimate routes
+    protectedRoutes.register(estimate_routes_js_1.estimateRoutes);
     // Get Jira configuration for frontend
     protectedRoutes.get('/config/jira', async (request, reply) => {
         return {
