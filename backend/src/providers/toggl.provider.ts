@@ -82,49 +82,47 @@ export class TogglProvider extends BaseTimeProvider {
         }
       });
 
+      const defaultWorkspaceId = meResponse.data.default_workspace_id;
+
       console.log('[Toggl] User data received:', {
-        defaultWorkspaceId: meResponse.data.default_workspace_id,
+        defaultWorkspaceId,
         workspacesCount: meResponse.data.workspaces?.length || 0
       });
 
-      const workspaces = meResponse.data.workspaces || [];
-
-      if (workspaces.length === 0) {
-        console.warn('[Toggl] No workspaces found');
+      if (!defaultWorkspaceId) {
+        console.warn('[Toggl] No default workspace ID found');
         return;
       }
 
-      // Fetch projects for each workspace
-      for (const workspace of workspaces) {
-        console.log(`[Toggl] Fetching projects for workspace ${workspace.id} (${workspace.name})...`);
+      // Use the default workspace ID to fetch projects
+      console.log(`[Toggl] Fetching projects for workspace ${defaultWorkspaceId}...`);
 
-        try {
-          const projectsResponse = await axios.get(
-            `https://api.track.toggl.com/api/v9/workspaces/${workspace.id}/projects`,
-            {
-              headers: {
-                Authorization: `Basic ${Buffer.from(`${token}:api_token`).toString('base64')}`
-              }
+      try {
+        const projectsResponse = await axios.get(
+          `https://api.track.toggl.com/api/v9/workspaces/${defaultWorkspaceId}/projects`,
+          {
+            headers: {
+              Authorization: `Basic ${Buffer.from(`${token}:api_token`).toString('base64')}`
             }
-          );
-
-          const projects = projectsResponse.data || [];
-          console.log(`[Toggl] Found ${projects.length} projects in workspace ${workspace.name}`);
-
-          projects.forEach((project: any) => {
-            console.log(`[Toggl] Caching project: ${project.id} -> ${project.name}`);
-            this.projectCache.set(project.id, project.name);
-          });
-        } catch (error) {
-          if (axios.isAxiosError(error)) {
-            console.error(`[Toggl] Error fetching projects for workspace ${workspace.id}:`, {
-              status: error.response?.status,
-              statusText: error.response?.statusText,
-              data: error.response?.data
-            });
-          } else {
-            console.error(`[Toggl] Error fetching projects for workspace ${workspace.id}:`, error);
           }
+        );
+
+        const projects = projectsResponse.data || [];
+        console.log(`[Toggl] Found ${projects.length} projects in workspace`);
+
+        projects.forEach((project: any) => {
+          console.log(`[Toggl] Caching project: ${project.id} -> ${project.name}`);
+          this.projectCache.set(project.id, project.name);
+        });
+      } catch (error) {
+        if (axios.isAxiosError(error)) {
+          console.error(`[Toggl] Error fetching projects for workspace ${defaultWorkspaceId}:`, {
+            status: error.response?.status,
+            statusText: error.response?.statusText,
+            data: error.response?.data
+          });
+        } else {
+          console.error(`[Toggl] Error fetching projects for workspace ${defaultWorkspaceId}:`, error);
         }
       }
 
