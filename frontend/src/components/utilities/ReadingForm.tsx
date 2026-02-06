@@ -41,7 +41,7 @@ export function ReadingForm({ reading, meters, selectedMeterId, onClose, onSave 
     if (reading) {
       setFormData({
         meterId: reading.meterId,
-        readingDate: reading.readingDate,
+        readingDate: reading.readingDate.split('T')[0], // Convert ISO string to YYYY-MM-DD
         value: reading.value,
         notes: reading.notes || '',
       });

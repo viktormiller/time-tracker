@@ -13,6 +13,7 @@ interface Meter {
 
 interface MeterFormProps {
   meter?: Meter | null;
+  defaultType?: string;
   onClose: () => void;
   onSave: () => void;
 }
@@ -23,11 +24,11 @@ const METER_TYPES = [
   { value: 'WASSER_WARM', label: 'Wasser Warm', unit: 'm³' },
 ];
 
-export function MeterForm({ meter, onClose, onSave }: MeterFormProps) {
+export function MeterForm({ meter, defaultType, onClose, onSave }: MeterFormProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
-    type: meter?.type || 'STROM',
+    type: meter?.type || defaultType || 'STROM',
     name: meter?.name || '',
     location: meter?.location || '',
   });

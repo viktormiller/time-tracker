@@ -271,6 +271,7 @@ export function Utilities({ onBack }: UtilitiesProps) {
       {(showMeterForm || editingMeter) && (
         <MeterForm
           meter={editingMeter}
+          defaultType={activeTab}
           onClose={() => {
             setShowMeterForm(false);
             setEditingMeter(null);
