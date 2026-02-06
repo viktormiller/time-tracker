@@ -39,10 +39,13 @@
 5. User can navigate to Utilities section from main navigation
 6. Utilities section shares authentication and theme with time tracking
 
-**Plans:** TBD
+**Plans:** 4 plans
 
 Plans:
-- [ ] 07-01: TBD during phase planning
+- [ ] 07-01-PLAN.md — Database schema (Meter + MeterReading models) with monotonic trigger and Zod validation schemas
+- [ ] 07-02-PLAN.md — Frontend navigation integration and Utilities page shell with empty state and tabs
+- [ ] 07-03-PLAN.md — Backend API routes (CRUD meters/readings, consumption calc, photo upload, Docker config)
+- [ ] 07-04-PLAN.md — Frontend CRUD components wired to API (forms, table, full interactivity)
 
 ### Phase 8: Manual Entry & Basic Visualization
 
@@ -112,7 +115,7 @@ Plans:
 | 4. UX Enhancements | v1.0 | 4/4 | Complete | 2026-01-22 |
 | 5. Manual Entry & Provider Abstraction | v1.0 | Pre-existing | Complete | 2026-01-29 |
 | 6. CLI Tool | v1.0 | Pre-existing | Complete | 2026-01-29 |
-| 7. Foundation | v2.0 | 0/? | Not started | - |
+| 7. Foundation | v2.0 | 0/4 | Not started | - |
 | 8. Manual Entry & Basic Visualization | v2.0 | 0/? | Not started | - |
 | 9. Excel Import | v2.0 | 0/? | Not started | - |
 | 10. Advanced Visualization | v2.0 | 0/? | Not started | - |
