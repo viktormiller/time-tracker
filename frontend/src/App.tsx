@@ -29,7 +29,7 @@ import { TimezoneSelector } from './components/TimezoneSelector';
 import { ProjectCell } from './components/ProjectCell';
 import { getTimezone, setTimezone } from './lib/timezone';
 import { ThemeToggle } from './components/ThemeToggle';
-import { useTheme } from './hooks/useTheme';
+import { useTheme, ThemeProvider } from './hooks/useTheme';
 import { exportToCSV } from './lib/csv-export';
 import { CustomSelect } from './components/CustomSelect';
 import { AddEntry } from './pages/AddEntry';
@@ -85,11 +85,13 @@ const getPresetRange = (preset: DatePreset): { start: Date, end: Date } | null =
 
 function App() {
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <AppContent />
-      </ToastProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <ToastProvider>
+          <AppContent />
+        </ToastProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 

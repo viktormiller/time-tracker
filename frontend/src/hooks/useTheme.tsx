@@ -1,7 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext, createContext, type ReactNode } from 'react';
 import { getTheme, setTheme as persistTheme, getEffectiveTheme, type Theme, type EffectiveTheme } from '../lib/theme';
 
-export function useTheme() {
+interface ThemeContextValue {
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+  effectiveTheme: EffectiveTheme;
+}
+
+const ThemeContext = createContext<ThemeContextValue | null>(null);
+
+export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(getTheme());
   const [effectiveTheme, setEffectiveTheme] = useState<EffectiveTheme>(getEffectiveTheme());
 
@@ -9,14 +17,12 @@ export function useTheme() {
     const effective = getEffectiveTheme();
     setEffectiveTheme(effective);
 
-    // Apply or remove dark class on documentElement
     if (effective === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
 
-    // Listen to system preference changes when theme is 'system'
     if (theme === 'system') {
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
@@ -41,9 +47,17 @@ export function useTheme() {
     persistTheme(newTheme);
   };
 
-  return {
-    theme,
-    setTheme,
-    effectiveTheme,
-  };
+  return (
+    <ThemeContext.Provider value={{ theme, setTheme, effectiveTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+
+export function useTheme() {
+  const context = useContext(ThemeContext);
+  if (!context) {
+    throw new Error('useTheme must be used within a ThemeProvider');
+  }
+  return context;
 }
