@@ -46,3 +46,32 @@ model EstimateProject {
   @@unique([estimateId, projectName])
   @@index([projectName])
 }
+
+model Meter {
+  id        String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type      String          // "STROM" | "GAS" | "WASSER_WARM"
+  name      String
+  unit      String          // "kWh" or "m3"
+  location  String?
+  deletedAt DateTime?       @db.Timestamptz(6)
+  createdAt DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime        @updatedAt @db.Timestamptz(6)
+  readings  MeterReading[]
+
+  @@index([type])
+  @@index([deletedAt])
+}
+
+model MeterReading {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  meterId     String   @db.Uuid
+  readingDate DateTime @db.Date
+  value       Float
+  photoPath   String?
+  notes       String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  meter       Meter    @relation(fields: [meterId], references: [id])
+
+  @@unique([meterId, readingDate])
+  @@index([meterId, readingDate])
+}
