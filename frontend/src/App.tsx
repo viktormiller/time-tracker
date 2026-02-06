@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import {
   Upload, Loader2, RefreshCw, Filter, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown,
-  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut, Download, FileText, Plus
+  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut, Download, FileText, Plus, Gauge
 } from 'lucide-react';
 import {
   format, parseISO, isSameDay, startOfToday, endOfToday,
@@ -35,6 +35,7 @@ import { CustomSelect } from './components/CustomSelect';
 import { AddEntry } from './pages/AddEntry';
 import { Settings as SettingsPage } from './pages/Settings';
 import { Estimates } from './pages/Estimates';
+import { Utilities } from './pages/Utilities';
 import { ToastProvider, useToast } from './hooks/useToast';
 
 // --- TYPEN ---
@@ -112,7 +113,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const { toast } = useToast();
 
   // --- VIEW STATE ---
-  const [currentView, setCurrentView] = useState<'dashboard' | 'add-entry' | 'settings' | 'estimates'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'add-entry' | 'settings' | 'estimates' | 'utilities'>('dashboard');
 
   // --- STATE ---
   const [entries, setEntries] = useState<TimeEntry[]>([]);
@@ -355,6 +356,15 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
     exportToCSV(filteredEntries, dateRange);
   };
 
+  // Helper function for nav button styling
+  const getNavButtonClass = (view: typeof currentView) => {
+    return `flex items-center gap-2 px-3 py-2 ${
+      currentView === view
+        ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30'
+        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+    } rounded-lg transition text-sm font-medium`;
+  };
+
   const handleExportPDF = async () => {
     if (filteredEntries.length === 0) {
       toast.warning('Keine Einträge zum Exportieren vorhanden.');
@@ -449,6 +459,13 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
     );
   }
 
+  // Render Utilities page if selected
+  if (currentView === 'utilities') {
+    return (
+      <Utilities onBack={() => setCurrentView('dashboard')} />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-6 font-sans relative">
       {/* MODALS */}
@@ -481,10 +498,20 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
 
                <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
 
+               {/* UTILITIES BUTTON */}
+               <button
+                 onClick={() => setCurrentView('utilities')}
+                 className={getNavButtonClass('utilities')}
+                 title="Verbrauch"
+               >
+                 <Gauge size={18} />
+                 <span className="hidden md:inline">Verbrauch</span>
+               </button>
+
                {/* ESTIMATES BUTTON */}
                <button
                  onClick={() => setCurrentView('estimates')}
-                 className="flex items-center gap-2 px-3 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition text-sm font-medium"
+                 className={getNavButtonClass('estimates')}
                  title="Schätzungen"
                >
                  <Layers size={18} />
