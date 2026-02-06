@@ -18,7 +18,7 @@ export const createReadingSchema = z.object({
   meterId: z.string().uuid('Invalid meter ID'),
   readingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD format'),
   value: z.number().nonnegative('Reading value must be non-negative'),
-  notes: z.string().max(500).optional(),
+  notes: z.string().max(500).optional().nullable(),
 });
 
 export const updateReadingSchema = z.object({
