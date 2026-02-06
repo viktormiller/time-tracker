@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { ArrowLeft, Plus, Pencil, Trash2, Loader2, X } from 'lucide-react';
+import { useToast } from '../hooks/useToast';
 
 const API_URL = '/api';
 
@@ -39,6 +40,7 @@ export function Estimates({ onBack }: EstimatesProps) {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingEstimate, setEditingEstimate] = useState<Estimate | null>(null);
+  const { toast } = useToast();
 
   // Form state
   const [formData, setFormData] = useState({
@@ -111,7 +113,7 @@ export function Estimates({ onBack }: EstimatesProps) {
     e.preventDefault();
 
     if (formData.projects.length === 0) {
-      alert('Bitte mindestens ein Projekt auswählen');
+      toast.warning('Bitte mindestens ein Projekt auswählen');
       return;
     }
 
@@ -125,7 +127,7 @@ export function Estimates({ onBack }: EstimatesProps) {
       fetchEstimates();
     } catch (err) {
       console.error('Failed to save estimate:', err);
-      alert('Fehler beim Speichern der Schätzung');
+      toast.error('Fehler beim Speichern der Schätzung');
     }
   };
 
@@ -137,7 +139,7 @@ export function Estimates({ onBack }: EstimatesProps) {
       fetchEstimates();
     } catch (err) {
       console.error('Failed to delete estimate:', err);
-      alert('Fehler beim Löschen der Schätzung');
+      toast.error('Fehler beim Löschen der Schätzung');
     }
   };
 

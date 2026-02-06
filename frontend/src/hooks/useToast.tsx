@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { ToastContainer } from '../components/Toast';
 
 type ToastType = 'success' | 'error' | 'warning';
@@ -21,6 +22,13 @@ const ToastContext = createContext<ToastContextValue | undefined>(undefined);
 type ToastSubscriber = (message: string, type: ToastType) => void;
 let globalSubscriber: ToastSubscriber | null = null;
 
+function generateId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random()}`;
+}
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -29,7 +37,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addToast = useCallback((message: string, type: ToastType) => {
-    const id = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+    const id = generateId();
     const newToast: Toast = { id, message, type };
 
     setToasts((current) => [...current, newToast]);

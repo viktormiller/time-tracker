@@ -7,6 +7,7 @@ import { ArrowLeft, Save, Loader2, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { calculateDuration } from '../lib/duration';
 import { getTimezone } from '../lib/timezone';
+import { useToast } from '../hooks/useToast';
 
 const API_URL = '/api';
 
@@ -42,6 +43,7 @@ interface AddEntryProps {
 export function AddEntry({ onBack, onSuccess, existingProjects }: AddEntryProps) {
   const [submitting, setSubmitting] = useState(false);
   const [showProjectSuggestions, setShowProjectSuggestions] = useState(false);
+  const { toast } = useToast();
 
   const {
     register,
@@ -106,15 +108,15 @@ export function AddEntry({ onBack, onSuccess, existingProjects }: AddEntryProps)
       };
 
       await axios.post(`${API_URL}/entries`, payload);
-      alert('Entry created successfully!');
+      toast.success('Entry created successfully!');
       onSuccess();
     } catch (error: any) {
       console.error('Failed to create entry:', error);
       if (error.response?.data?.details) {
-        const errorMessages = error.response.data.details.map((e: any) => e.message).join('\n');
-        alert(`Validation error:\n${errorMessages}`);
+        const errorMessages = error.response.data.details.map((e: any) => e.message).join(' ');
+        toast.error(`Validation error: ${errorMessages}`);
       } else {
-        alert('Failed to create entry. Please try again.');
+        toast.error('Failed to create entry. Please try again.');
       }
     } finally {
       setSubmitting(false);

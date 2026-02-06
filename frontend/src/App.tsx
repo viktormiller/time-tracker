@@ -35,6 +35,7 @@ import { CustomSelect } from './components/CustomSelect';
 import { AddEntry } from './pages/AddEntry';
 import { Settings as SettingsPage } from './pages/Settings';
 import { Estimates } from './pages/Estimates';
+import { ToastProvider, useToast } from './hooks/useToast';
 
 // --- TYPEN ---
 interface TimeEntry {
@@ -85,7 +86,9 @@ const getPresetRange = (preset: DatePreset): { start: Date, end: Date } | null =
 function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
     </AuthProvider>
   );
 }
@@ -104,6 +107,7 @@ function AppContent() {
 function AuthenticatedApp({ logout }: { logout: () => void }) {
   const { effectiveTheme } = useTheme();
   const isDarkMode = effectiveTheme === 'dark';
+  const { toast } = useToast();
 
   // --- VIEW STATE ---
   const [currentView, setCurrentView] = useState<'dashboard' | 'add-entry' | 'settings' | 'estimates'>('dashboard');
@@ -147,11 +151,11 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
 
   const deleteEntry = async (id: string) => {
     if (!confirm('Möchtest du diesen Eintrag wirklich löschen?')) return;
-    try { await axios.delete(`${API_URL}/entries/${id}`); fetchData(); } catch (e) { alert('Fehler beim Löschen'); }
+    try { await axios.delete(`${API_URL}/entries/${id}`); fetchData(); } catch (e) { toast.error('Fehler beim Löschen'); }
   };
 
   const updateEntry = async (entry: TimeEntry) => {
-      try { await axios.put(`${API_URL}/entries/${entry.id}`, entry); setEditingEntry(null); fetchData(); } catch (e) { alert('Fehler beim Speichern'); }
+      try { await axios.put(`${API_URL}/entries/${entry.id}`, entry); setEditingEntry(null); fetchData(); } catch (e) { toast.error('Fehler beim Speichern'); }
   };
 
   const syncToggl = async (startDate?: string, endDate?: string) => {
@@ -164,11 +168,11 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
           console.log("Sende an Backend:", payload); // Debug fürs Browser Terminal (F12)
 
           const res = await axios.post(`${API_URL}/sync/toggl?force=${isCustom}`, payload);
-          alert(`Sync erfolgreich: ${res.data.message} (${res.data.count} Einträge)`);
+          toast.success(`Sync erfolgreich: ${res.data.message} (${res.data.count} Einträge)`);
           fetchData();
       } catch (error) {
-          if (axios.isAxiosError(error) && error.response?.data?.error) alert(`Fehler beim Toggl Sync: ${error.response.data.error}`);
-          else alert('Unbekannter Fehler beim Toggl Sync.');
+          if (axios.isAxiosError(error) && error.response?.data?.error) toast.error(`Fehler beim Toggl Sync: ${error.response.data.error}`);
+          else toast.error('Unbekannter Fehler beim Toggl Sync.');
       } finally { setSyncing(false); }
   };
 
@@ -178,11 +182,11 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
           const isCustom = !!startDate;
           const payload = isCustom ? { startDate, endDate } : {};
           const res = await axios.post(`${API_URL}/sync/tempo?force=${isCustom}`, payload);
-          alert(`Tempo Sync erfolgreich: ${res.data.message} (${res.data.count} Einträge)`);
+          toast.success(`Tempo Sync erfolgreich: ${res.data.message} (${res.data.count} Einträge)`);
           fetchData();
       } catch (error) {
-          if (axios.isAxiosError(error) && error.response?.data?.error) alert(`Fehler beim Tempo Sync: ${error.response.data.error}`);
-          else alert('Unbekannter Fehler beim Tempo Sync.');
+          if (axios.isAxiosError(error) && error.response?.data?.error) toast.error(`Fehler beim Tempo Sync: ${error.response.data.error}`);
+          else toast.error('Unbekannter Fehler beim Tempo Sync.');
       } finally { setSyncing(false); }
   };
 
@@ -343,7 +347,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
 
   const handleExportCSV = () => {
     if (filteredEntries.length === 0) {
-      alert('Keine Einträge zum Exportieren vorhanden.');
+      toast.warning('Keine Einträge zum Exportieren vorhanden.');
       return;
     }
     exportToCSV(filteredEntries, dateRange);
@@ -351,7 +355,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
 
   const handleExportPDF = async () => {
     if (filteredEntries.length === 0) {
-      alert('Keine Einträge zum Exportieren vorhanden.');
+      toast.warning('Keine Einträge zum Exportieren vorhanden.');
       return;
     }
 
@@ -388,7 +392,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error('PDF export failed:', error);
-      alert('PDF Export fehlgeschlagen. Bitte versuchen Sie es erneut.');
+      toast.error('PDF Export fehlgeschlagen. Bitte versuchen Sie es erneut.');
     } finally {
       setExportingPdf(false);
     }
@@ -410,8 +414,8 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
-    try { await axios.post(`${API_URL}/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }); alert('Import erfolgreich!'); fetchData(); } 
-    catch (error) { alert('Fehler beim Upload.'); } finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
+    try { await axios.post(`${API_URL}/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }); toast.success('Import erfolgreich!'); fetchData(); }
+    catch (error) { toast.error('Fehler beim Upload.'); } finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
   // Render Add Entry page if selected
