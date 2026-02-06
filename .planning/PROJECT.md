@@ -2,7 +2,7 @@
 
 ## What This Is
 
-A full-stack time tracking aggregator that consolidates hours from multiple sources (Toggl, Tempo) into a unified dashboard. Built for personal use with a path to multi-user support.
+A production-ready, full-stack time tracking aggregator that consolidates hours from multiple sources (Toggl, Tempo, manual entry) into a unified dashboard with JWT authentication, Docker deployment, dark mode, CSV/PDF export, and a Go CLI for terminal access.
 
 ## Why It Exists
 
@@ -12,67 +12,75 @@ Tracking time across multiple systems (Toggl for general work, Tempo for Jira-li
 
 **See all worked hours in one place** — regardless of which system tracked them.
 
+## Current State
+
+**Version:** v1.0 MVP (shipped 2026-02-06)
+**Tech Stack:** React + Vite + TypeScript (frontend), Fastify + TypeScript (backend), PostgreSQL + Prisma (database), Go + Cobra (CLI), Docker Compose (deployment)
+**Codebase:** ~7,400 LOC across 204 files
+
 ## Requirements
 
 ### Validated
 
-- [x] Sync time entries from Toggl API — existing
-- [x] Sync time entries from Tempo API — existing
-- [x] Import time entries from Toggl CSV — existing
-- [x] Import time entries from Tempo CSV — existing
-- [x] View daily hours in bar chart — existing
-- [x] Filter entries by date range (presets + custom) — existing
-- [x] Edit time entries — existing
-- [x] Delete time entries — existing
-- [x] View entries by source (Toggl/Tempo/All) — existing
+- [x] Sync time entries from Toggl API — pre-existing
+- [x] Sync time entries from Tempo API — pre-existing
+- [x] Import time entries from Toggl CSV — pre-existing
+- [x] Import time entries from Tempo CSV — pre-existing
+- [x] View daily hours in bar chart — pre-existing
+- [x] Filter entries by date range (presets + custom) — pre-existing
+- [x] Edit time entries — pre-existing
+- [x] Delete time entries — pre-existing
+- [x] View entries by source (Toggl/Tempo/All) — pre-existing
+- [x] User can log in with credentials (single user) — v1.0
+- [x] Application runs in Docker containers — v1.0
+- [x] Docker Compose orchestrates frontend, backend, database — v1.0
+- [x] Tempo API resolves internal IDs to readable issue keys — v1.0
+- [x] PostgreSQL replaces SQLite for production — v1.0
+- [x] User can switch between light and dark themes — v1.0
+- [x] User can export filtered data as CSV — v1.0
+- [x] User can export filtered data as PDF — v1.0
+- [x] Synthetic ID generation handles edge cases robustly — v1.0
+- [x] User can add manual time entries directly — v1.0
+- [x] Go CLI shows today's worked hours — v1.0
+- [x] Go CLI shows weekly summary — v1.0
+- [x] Go CLI triggers sync via backend API — v1.0
+- [x] Clean provider abstraction for adding new sources — v1.0
 
 ### Active
 
-**Deployment MVP:**
-- [ ] User can log in with credentials (single user initially)
-- [ ] Application runs in Docker containers
-- [ ] Docker Compose orchestrates frontend, backend, database
-
-**Post-Deployment:**
-- [ ] Tempo API resolves internal IDs to readable issue keys (ABC-27 vs "Issue #24990")
-- [ ] PostgreSQL replaces SQLite for production
-- [ ] User can switch between light and dark themes
-- [ ] User can export filtered data as CSV
-- [ ] User can export filtered data as PDF
-- [ ] Synthetic ID generation handles edge cases robustly
-- [ ] User can add manual time entries directly
-
-**CLI Tool:**
-- [ ] Go CLI shows today's worked hours
-- [ ] Go CLI shows weekly summary
-- [ ] Go CLI triggers sync via backend API
-
-**Future Sources:**
 - [ ] Clockify API integration
-- [ ] Clean provider abstraction for adding new sources
+- [ ] Project estimation tracking with enhanced project names
 
 ### Out of Scope
 
-- Multi-user authentication (v1 is single user) — future enhancement
-- Mobile app — web-first approach
+- Multi-user authentication — v1 is single user, architecture supports expansion
+- Mobile app — web-first approach, responsive design sufficient
 - Real-time sync — manual trigger is sufficient
 - Billing/invoicing features — export covers this need
+- Time tracking in CLI — CLI is read-only + sync trigger
+- Offline mode — requires PWA/service workers
 
 ## Constraints
 
 - **Hosting:** Hetzner server (Docker deployment)
-- **Auth:** Single user for v1, but architecture should support multi-user
+- **Auth:** Single user for v1, but architecture supports multi-user
 - **CLI:** Go language, queries backend API (not direct to external APIs)
-- **Extensibility:** New time sources should be easy to add (provider pattern)
+- **Extensibility:** New time sources require implementing TimeProvider interface
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Single user auth first | Faster to deployment, simpler security | — Pending |
-| Go for CLI | Developer familiarity, single binary distribution | — Pending |
-| CLI via backend API | Single source of truth, no duplicate API logic | — Pending |
-| Docker Compose | Simplifies multi-container deployment | — Pending |
+| Single user auth first | Faster to deployment, simpler security | Good — shipped quickly, works well |
+| Go for CLI | Developer familiarity, single binary distribution | Good — clean CLI with cobra |
+| CLI via backend API | Single source of truth, no duplicate API logic | Good — no sync divergence |
+| Docker Compose | Simplifies multi-container deployment | Good — reliable deployment on Hetzner |
+| node:22-slim for backend | bcrypt native binding compatibility | Good — resolved Alpine build issues |
+| Puppeteer for PDF | Server-side generation, better quality | Good — professional output |
+| PostgreSQL gen_random_uuid() | Database-level UUID, no app-level collisions | Good — eliminates race conditions |
+| Tailwind darkMode: 'selector' | Class-based theming, explicit control | Good — no FOUC with inline script |
+| react-select for dropdowns | Consistent styling, keyboard navigation | Good — unified UI feel |
+| Provider abstraction pattern | Extensible architecture for new sources | Good — adding sources is straightforward |
 
 ## Stakeholders
 
@@ -87,4 +95,4 @@ Tracking time across multiple systems (Toggl for general work, Tempo for Jira-li
 4. Adding a new time source takes < 1 day of work
 
 ---
-*Last updated: 2026-01-19 after initialization*
+*Last updated: 2026-02-06 after v1.0 MVP milestone*

@@ -1,138 +1,30 @@
 # Roadmap: Time Tracker Dashboard
 
-## Overview
+## Milestones
 
-This roadmap transforms a working time tracking aggregator into a production-ready, deployable system. Starting with authentication security, moving through containerization and deployment infrastructure, then enhancing data quality and user experience, finally adding CLI access and extensibility for future time sources. Each phase builds on the previous, delivering incremental value while maintaining the core functionality that already works.
+- **v1.0 MVP** — Phases 1-6 (shipped 2026-02-06) — [Archive](milestones/v1.0-ROADMAP.md)
 
 ## Phases
 
-**Phase Numbering:**
-- Integer phases (1, 2, 3): Planned milestone work
-- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+<details>
+<summary>v1.0 MVP (Phases 1-6) — SHIPPED 2026-02-06</summary>
 
-Decimal phases appear between their surrounding integers in numeric order.
+- [x] Phase 1: Authentication & Security (4/4 plans) — completed 2026-01-21
+- [x] Phase 2: Containerization & Deployment (4/4 plans) — completed 2026-01-21
+- [x] Phase 3: Data Quality & PostgreSQL Migration (4/4 plans) — completed 2026-01-21
+- [x] Phase 4: UX Enhancements (4/4 plans) — completed 2026-01-22
+- [x] Phase 5: Manual Entry & Provider Abstraction (pre-existing) — completed 2026-01-29
+- [x] Phase 6: CLI Tool (pre-existing) — completed 2026-01-29
 
-- [x] **Phase 1: Authentication & Security** - Single-user login with JWT protection
-- [x] **Phase 2: Containerization & Deployment** - Docker infrastructure for production deployment
-- [x] **Phase 3: Data Quality & PostgreSQL Migration** - Production database with robust ID handling
-- [x] **Phase 4: UX Enhancements** - Dark mode and export capabilities
-- [x] **Phase 5: Manual Entry & Provider Abstraction** - Direct entry creation and extensible architecture
-- [x] **Phase 6: CLI Tool** - Command-line access for quick time checks
-
-## Phase Details
-
-### Phase 1: Authentication & Security
-**Goal**: User can securely access the dashboard with credentials
-**Depends on**: Nothing (first phase)
-**Requirements**: REQ-001
-**Success Criteria** (what must be TRUE):
-  1. User can log in with username and password
-  2. User remains logged in across browser sessions
-  3. User can log out from any page
-  4. All API routes require valid authentication
-  5. Unauthenticated requests are rejected with 401
-**Plans**: 4 plans
-
-Plans:
-- [x] 01-01-PLAN.md — Backend auth infrastructure (JWT, sessions, security)
-- [x] 01-02-PLAN.md — Auth routes and middleware (login, logout, refresh)
-- [x] 01-03-PLAN.md — Protect API routes and frontend integration
-- [x] 01-04-PLAN.md — Verify complete authentication flow
-
-### Phase 2: Containerization & Deployment
-**Goal**: Application runs in production-ready Docker containers on Hetzner
-**Depends on**: Phase 1
-**Requirements**: REQ-002, REQ-003
-**Success Criteria** (what must be TRUE):
-  1. Frontend, backend, and database run in separate containers
-  2. Services start in correct order with health checks
-  3. `docker-compose up` launches entire stack
-  4. Secrets managed via Docker Secrets (not environment variables)
-  5. Only ports 80/443 exposed to public (database internal only)
-**Plans**: 4 plans
-
-Plans:
-- [x] 02-01-PLAN.md — Backend Dockerfile, health endpoint, PostgreSQL config
-- [x] 02-02-PLAN.md — Frontend Dockerfile, Nginx SPA routing and API proxy
-- [x] 02-03-PLAN.md — Docker Compose orchestration and secrets management
-- [x] 02-04-PLAN.md — End-to-end Docker stack verification
-
-### Phase 3: Data Quality & PostgreSQL Migration
-**Goal**: Production database with timezone support and robust synthetic IDs
-**Depends on**: Phase 2
-**Requirements**: REQ-005, REQ-009, REQ-004
-**Success Criteria** (what must be TRUE):
-  1. PostgreSQL replaces SQLite in production environment
-  2. Existing SQLite data migrated successfully to PostgreSQL
-  3. DateTime fields preserve timezone information (TIMESTAMPTZ)
-  4. Concurrent sync operations don't cause duplicate ID conflicts
-  5. Tempo entries display readable Jira issue keys (e.g., ABC-27)
-**Plans**: 4 plans
-
-Plans:
-- [x] 03-01-PLAN.md — Schema migration (TIMESTAMPTZ, database-level UUIDs, pgloader migration script)
-- [x] 03-02-PLAN.md — Tempo service enhancement (issue key display, collision handling, Jira config)
-- [x] 03-03-PLAN.md — Frontend enhancements (timezone selector, relative timestamps, clickable Jira links)
-- [x] 03-04-PLAN.md — End-to-end verification (migration validation, concurrent sync tests, UI verification)
-
-### Phase 4: UX Enhancements
-**Goal**: Users can customize theme and export their data
-**Depends on**: Phase 3
-**Requirements**: REQ-006, REQ-007, REQ-008
-**Success Criteria** (what must be TRUE):
-  1. User can toggle between light and dark themes
-  2. Theme preference persists across sessions
-  3. User can export filtered entries as CSV file
-  4. User can export filtered entries with chart as PDF
-  5. All components readable in both light and dark modes
-**Plans**: 4 plans
-
-Plans:
-- [x] 04-01-PLAN.md — Dark mode implementation (theme toggle, FOUC prevention, component styling)
-- [x] 04-02-PLAN.md — CSV export (client-side generation with sanitization)
-- [x] 04-03-PLAN.md — PDF export backend (Puppeteer service, API endpoint, Docker config)
-- [x] 04-04-PLAN.md — PDF export frontend and end-to-end verification
-
-### Phase 5: Manual Entry & Provider Abstraction
-**Goal**: Users can add entries directly and system is ready for new sources
-**Depends on**: Phase 4
-**Requirements**: REQ-010, REQ-015
-**Success Criteria** (what must be TRUE):
-  1. User can add manual time entry via form
-  2. User can specify date, duration (or start/end time), description, and project
-  3. Manual entries appear immediately in dashboard
-  4. Unified Provider interface exists for all time sources
-  5. Adding new time source requires implementing single interface
-**Plans**: Pre-existing (implemented before GSD tracking)
-
-Plans:
-- [x] Pre-existing implementation — AddEntry UI, Provider interface, BaseTimeProvider
-
-### Phase 6: CLI Tool
-**Goal**: User can check worked hours from terminal without browser
-**Depends on**: Phase 5
-**Requirements**: REQ-011, REQ-012, REQ-013
-**Success Criteria** (what must be TRUE):
-  1. User can run `timetracker today` to see today's hours
-  2. User can run `timetracker week` to see weekly breakdown
-  3. User can run `timetracker sync` to trigger backend sync
-  4. CLI authenticates with backend API using JWT
-  5. CLI config stored securely in ~/.timetracker/config.yaml
-**Plans**: Pre-existing (implemented before GSD tracking)
-
-Plans:
-- [x] Pre-existing implementation — Go CLI with login, today, week, sync commands + backend summary endpoints
+</details>
 
 ## Progress
 
-**Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 1. Authentication & Security | 4/4 | Complete | 2026-01-21 |
-| 2. Containerization & Deployment | 4/4 | Complete | 2026-01-21 |
-| 3. Data Quality & PostgreSQL Migration | 4/4 | Complete | 2026-01-21 |
-| 4. UX Enhancements | 4/4 | Complete | 2026-01-22 |
-| 5. Manual Entry & Provider Abstraction | Pre-existing | Complete | 2026-01-29 |
-| 6. CLI Tool | Pre-existing | Complete | 2026-01-29 |
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 1. Authentication & Security | v1.0 | 4/4 | Complete | 2026-01-21 |
+| 2. Containerization & Deployment | v1.0 | 4/4 | Complete | 2026-01-21 |
+| 3. Data Quality & PostgreSQL Migration | v1.0 | 4/4 | Complete | 2026-01-21 |
+| 4. UX Enhancements | v1.0 | 4/4 | Complete | 2026-01-22 |
+| 5. Manual Entry & Provider Abstraction | v1.0 | Pre-existing | Complete | 2026-01-29 |
+| 6. CLI Tool | v1.0 | Pre-existing | Complete | 2026-01-29 |
