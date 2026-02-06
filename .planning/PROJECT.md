@@ -14,7 +14,7 @@ Tracking time across multiple systems (Toggl for general work, Tempo for Jira-li
 
 ## Current State
 
-**Version:** v1.0 MVP (shipped 2026-02-06)
+**Version:** v1.0.1 (shipped 2026-02-06)
 **Tech Stack:** React + Vite + TypeScript (frontend), Fastify + TypeScript (backend), PostgreSQL + Prisma (database), Go + Cobra (CLI), Docker Compose (deployment)
 **Codebase:** ~7,400 LOC across 204 files
 
@@ -81,6 +81,8 @@ Tracking time across multiple systems (Toggl for general work, Tempo for Jira-li
 | Tailwind darkMode: 'selector' | Class-based theming, explicit control | Good — no FOUC with inline script |
 | react-select for dropdowns | Consistent styling, keyboard navigation | Good — unified UI feel |
 | Provider abstraction pattern | Extensible architecture for new sources | Good — adding sources is straightforward |
+| Custom toast over library | Zero dependencies, full control with Tailwind | Good — lightweight, matches app styling |
+| ThemeProvider context | Shared state across all theme consumers | Good — fixed react-select not updating on toggle |
 
 ## Stakeholders
 
@@ -95,4 +97,4 @@ Tracking time across multiple systems (Toggl for general work, Tempo for Jira-li
 4. Adding a new time source takes < 1 day of work
 
 ---
-*Last updated: 2026-02-06 after v1.0 MVP milestone*
+*Last updated: 2026-02-06 after v1.0.1 release*
