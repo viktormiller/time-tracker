@@ -43,6 +43,12 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table with outcomes.
 
 None.
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 001 | Replace all browser alerts with toast notifications | 2026-02-06 | e5520d7 | [001-replace-alerts-with-toast-notifications](./quick/001-replace-alerts-with-toast-notifications/) |
+
 ### Blockers/Concerns
 
 None — all v1.0 blockers resolved.
