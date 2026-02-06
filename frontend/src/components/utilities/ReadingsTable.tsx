@@ -76,7 +76,7 @@ export function ReadingsTable({ readings, loading, onEdit, onDelete }: ReadingsT
 
   if (loading) {
     return (
-      <div className="overflow-x-auto">
+      <div>
         <table className="w-full">
           <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
             <tr>
@@ -133,7 +133,7 @@ export function ReadingsTable({ readings, loading, onEdit, onDelete }: ReadingsT
   }
 
   return (
-    <div className="overflow-x-auto overflow-y-visible">
+    <div>
       <table className="w-full">
         <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
           <tr>
