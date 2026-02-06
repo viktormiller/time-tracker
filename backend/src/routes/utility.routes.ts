@@ -20,11 +20,13 @@ export async function utilityRoutes(fastify: FastifyInstance) {
     decorateReply: false, // Avoid decorator conflict if registered elsewhere
   });
 
-  // GET /api/utilities/meters - List all active meters
+  // GET /api/utilities/meters - List meters (active or including archived)
   fastify.get('/utilities/meters', async (request, reply) => {
     try {
+      const { includeArchived } = request.query as { includeArchived?: string };
+
       const meters = await prisma.meter.findMany({
-        where: { deletedAt: null }, // Soft delete filter
+        where: includeArchived === 'true' ? {} : { deletedAt: null },
         orderBy: { createdAt: 'desc' },
         include: {
           _count: {
@@ -89,6 +91,21 @@ export async function utilityRoutes(fastify: FastifyInstance) {
     } catch (error) {
       fastify.log.error(error);
       reply.status(500).send({ error: 'Failed to delete meter' });
+    }
+  });
+
+  // PATCH /api/utilities/meters/:id/restore - Restore an archived meter
+  fastify.patch('/utilities/meters/:id/restore', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const meter = await prisma.meter.update({
+        where: { id },
+        data: { deletedAt: null },
+      });
+      return meter;
+    } catch (error) {
+      fastify.log.error(error);
+      reply.status(500).send({ error: 'Failed to restore meter' });
     }
   });
 

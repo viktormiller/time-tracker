@@ -48,16 +48,18 @@ export function Utilities({ onBack }: UtilitiesProps) {
   const [editingReading, setEditingReading] = useState<MeterReading | null>(null);
   const [selectedMeterId, setSelectedMeterId] = useState<string | null>(null);
   const [openMeterMenuId, setOpenMeterMenuId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   // API functions
   const fetchMeters = async () => {
     setLoading(true);
     try {
-      const response = await axios.get<Meter[]>('/api/utilities/meters');
-      const activeMeters = response.data.filter(m => !m.deletedAt);
-      setMeters(activeMeters);
+      const params = showArchived ? '?includeArchived=true' : '';
+      const response = await axios.get<Meter[]>(`/api/utilities/meters${params}`);
+      setMeters(response.data);
 
       // Auto-select first meter of active tab
+      const activeMeters = response.data.filter(m => !m.deletedAt);
       const metersOfType = activeMeters.filter(m => m.type === activeTab);
       if (metersOfType.length > 0 && !selectedMeterId) {
         const firstMeter = metersOfType[0];
@@ -102,6 +104,17 @@ export function Utilities({ onBack }: UtilitiesProps) {
     }
   };
 
+  const restoreMeter = async (id: string) => {
+    try {
+      await axios.patch(`/api/utilities/meters/${id}/restore`);
+      toast.success('Zähler wiederhergestellt');
+      await fetchMeters();
+    } catch (err) {
+      console.error('Failed to restore meter:', err);
+      toast.error('Fehler beim Wiederherstellen');
+    }
+  };
+
   const deleteReading = async (id: string) => {
     try {
       await axios.delete(`/api/utilities/readings/${id}`);
@@ -121,6 +134,10 @@ export function Utilities({ onBack }: UtilitiesProps) {
   }, []);
 
   useEffect(() => {
+    fetchMeters();
+  }, [showArchived]);
+
+  useEffect(() => {
     const metersOfType = meters.filter(m => m.type === activeTab);
     if (metersOfType.length > 0) {
       const firstMeter = metersOfType[0];
@@ -132,11 +149,11 @@ export function Utilities({ onBack }: UtilitiesProps) {
     }
   }, [activeTab]);
 
-  // Calculate meter counts by type
+  // Calculate meter counts by type (only active meters)
   const meterCounts = {
-    STROM: meters.filter(m => m.type === 'STROM').length,
-    GAS: meters.filter(m => m.type === 'GAS').length,
-    WASSER_WARM: meters.filter(m => m.type === 'WASSER_WARM').length,
+    STROM: meters.filter(m => m.type === 'STROM' && !m.deletedAt).length,
+    GAS: meters.filter(m => m.type === 'GAS' && !m.deletedAt).length,
+    WASSER_WARM: meters.filter(m => m.type === 'WASSER_WARM' && !m.deletedAt).length,
   };
 
   // Get selected meter
@@ -157,15 +174,28 @@ export function Utilities({ onBack }: UtilitiesProps) {
             </button>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Verbrauch</h1>
           </div>
-          {meters.length > 0 && (
-            <button
-              onClick={() => setShowMeterForm(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600 text-white rounded-lg transition font-medium shadow-sm"
-            >
-              <Plus size={20} />
-              Neuer Zähler
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {meters.length > 0 && (
+              <label className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={(e) => setShowArchived(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+                />
+                Archivierte anzeigen
+              </label>
+            )}
+            {meters.length > 0 && (
+              <button
+                onClick={() => setShowMeterForm(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600 text-white rounded-lg transition font-medium shadow-sm"
+              >
+                <Plus size={20} />
+                Neuer Zähler
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Content */}
@@ -185,9 +215,14 @@ export function Utilities({ onBack }: UtilitiesProps) {
               {selectedMeter && (
                 <div className="border-b border-gray-200 dark:border-gray-700 p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    <h3 className={`text-lg font-semibold ${selectedMeter.deletedAt ? 'text-gray-500 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>
                       {selectedMeter.name}
                     </h3>
+                    {selectedMeter.deletedAt && (
+                      <span className="px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-200 dark:bg-gray-700 rounded">
+                        Archiviert
+                      </span>
+                    )}
                     {selectedMeter.location && (
                       <span className="text-sm text-gray-500 dark:text-gray-400">
                         ({selectedMeter.location})
@@ -208,39 +243,56 @@ export function Utilities({ onBack }: UtilitiesProps) {
                             onClick={() => setOpenMeterMenuId(null)}
                           />
                           <div className="absolute left-0 mt-1 w-48 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 py-1 z-20">
-                            <button
-                              onClick={() => {
-                                setEditingMeter(selectedMeter);
-                                setShowMeterForm(true);
-                                setOpenMeterMenuId(null);
-                              }}
-                              className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
-                            >
-                              <Edit2 size={16} />
-                              Bearbeiten
-                            </button>
-                            <button
-                              onClick={() => {
-                                deleteMeter(selectedMeter.id);
-                                setOpenMeterMenuId(null);
-                              }}
-                              className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
-                            >
-                              <Archive size={16} />
-                              Archivieren
-                            </button>
+                            {!selectedMeter.deletedAt && (
+                              <button
+                                onClick={() => {
+                                  setEditingMeter(selectedMeter);
+                                  setShowMeterForm(true);
+                                  setOpenMeterMenuId(null);
+                                }}
+                                className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
+                              >
+                                <Edit2 size={16} />
+                                Bearbeiten
+                              </button>
+                            )}
+                            {selectedMeter.deletedAt ? (
+                              <button
+                                onClick={() => {
+                                  restoreMeter(selectedMeter.id);
+                                  setOpenMeterMenuId(null);
+                                }}
+                                className="w-full px-4 py-2 text-left text-sm text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 flex items-center gap-2"
+                              >
+                                <Archive size={16} />
+                                Wiederherstellen
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  deleteMeter(selectedMeter.id);
+                                  setOpenMeterMenuId(null);
+                                }}
+                                className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
+                              >
+                                <Archive size={16} />
+                                Archivieren
+                              </button>
+                            )}
                           </div>
                         </>
                       )}
                     </div>
                   </div>
-                  <button
-                    onClick={() => setShowReadingForm(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600 text-white rounded-lg transition font-medium shadow-sm"
-                  >
-                    <Plus size={18} />
-                    Ablesung hinzufügen
-                  </button>
+                  {!selectedMeter.deletedAt && (
+                    <button
+                      onClick={() => setShowReadingForm(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600 text-white rounded-lg transition font-medium shadow-sm"
+                    >
+                      <Plus size={18} />
+                      Ablesung hinzufügen
+                    </button>
+                  )}
                 </div>
               )}
 
