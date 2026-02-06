@@ -1,1833 +1,1042 @@
-# Domain Pitfalls: Time Tracking with Authentication & Multi-Source Aggregation
+# Pitfalls Research: Adding Utility Meter Tracking to Existing Dashboard
 
-**Domain:** Time tracking dashboard with single-user authentication
-**Tech Stack:** Node.js (Fastify), React, Prisma ORM, SQLite → PostgreSQL, Docker Compose, Hetzner deployment
-**Researched:** 2026-01-19
-**Overall Confidence:** HIGH (based on official documentation, community reports, and 2025 security advisories)
+**Domain:** Utility meter tracking with OCR added to existing time tracking dashboard
+**Tech Stack:** React, Fastify, PostgreSQL, Prisma ORM, Docker Compose, Hetzner deployment
+**Researched:** 2026-02-06
+**Confidence:** MEDIUM-HIGH
 
----
-
-## Executive Summary
-
-Building a time tracking system that aggregates from multiple sources (Toggl, Tempo) while adding authentication and migrating to PostgreSQL presents several critical pitfalls. The most severe risks involve:
-
-1. **Authentication bypass vulnerabilities** in simple single-user systems (CVE-2025-0108 and similar)
-2. **Docker secrets exposure** through environment variables
-3. **Race conditions in Prisma upsert** with composite unique constraints
-4. **Data type incompatibilities** when migrating from SQLite to PostgreSQL
-5. **Timezone/DST edge cases** causing duplicate or missing entries
-6. **API rate limiting** on Toggl (new limits starting September 2025)
-
-This document categorizes pitfalls by severity and provides concrete prevention strategies.
+Research combines official documentation, industry best practices, and technical constraints specific to adding meter reading features (OCR, Excel import, advanced charting) to an existing React+Fastify+PostgreSQL time tracking application.
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause security breaches, data corruption, or complete system rewrites.
+These mistakes cause rewrites, data loss, or major architectural changes.
 
-### Pitfall 1: Hardcoded Secrets in Docker Images/Environment Variables
+### 1. OCR Accuracy Overconfidence
 
-**What goes wrong:**
-Secrets (API tokens, database passwords) are stored directly in `docker-compose.yml` environment variables or baked into Docker images. These credentials become permanently exposed when images are pushed to registries or docker-compose files are committed to version control.
+**What goes wrong:** Assuming OCR will "just work" for German utility meters leads to production system with 55-63% accuracy (research shows this is realistic for digital displays), causing massive manual correction burden.
 
 **Why it happens:**
-Environment variables seem convenient for configuration. Developers test locally with `.env` files and mistakenly use the same pattern in production docker-compose files.
+- Tesseract defaults trained on text, not seven-segment displays
+- Phone photos have variable lighting, angles, reflections on meter glass
+- Seven-segment digits easily misread (8→0, 5→6, 1→7)
+- Digital LED displays have background artifacts, decimal points, unit indicators
 
 **Consequences:**
-- API tokens for Toggl/Tempo exposed forever in Docker Hub/GitHub
-- Database passwords leaked in container inspection
-- Credentials accessible via `docker inspect` or process environment
-- "Environment variables can unintentionally be leaked between containers" (Docker official docs)
+- User frustration with constant corrections
+- Data integrity compromised (garbage in, garbage out)
+- Users abandon OCR feature, system becomes manual-entry-only
+- Incorrect consumption calculations from bad readings
+- Loss of trust in the application
 
 **Prevention:**
-```yaml
-# BAD - Don't do this in production
-services:
-  backend:
-    environment:
-      - TOGGL_API_TOKEN=abc123...  # EXPOSED!
-      - DATABASE_URL=postgresql://user:password@db:5432/timetracker
+1. Use specialized training data for seven-segment displays
+2. Implement preprocessing pipeline before OCR
+3. Add confidence thresholds (reject readings below 85%)
+4. Always show extracted value for user verification
+5. Build manual correction UI from day one
 
-# GOOD - Use Docker Secrets
-services:
-  backend:
-    secrets:
-      - toggl_api_token
-      - tempo_api_token
-      - database_password
-    environment:
-      - DATABASE_URL=postgresql://user@db:5432/timetracker
-
-secrets:
-  toggl_api_token:
-    file: ./secrets/toggl_token.txt
-  tempo_api_token:
-    file: ./secrets/tempo_token.txt
-  database_password:
-    file: ./secrets/db_password.txt
-```
-
-In your application code, read from `/run/secrets/<secret_name>`:
 ```typescript
-import fs from 'fs';
-const togglToken = fs.readFileSync('/run/secrets/toggl_api_token', 'utf8').trim();
+// Image preprocessing pipeline
+import sharp from 'sharp';
+
+async function preprocessMeterImage(buffer: Buffer): Promise<Buffer> {
+  return sharp(buffer)
+    .grayscale() // Remove color noise
+    .normalize() // Improve contrast
+    .threshold(128) // Binarize image
+    .toBuffer();
+}
+
+// OCR with confidence checking
+import Tesseract from 'tesseract.js';
+
+async function extractMeterReading(imagePath: string): Promise<{ value: number, confidence: number }> {
+  const { data: { text, confidence } } = await Tesseract.recognize(
+    imagePath,
+    'eng',
+    {
+      tessedit_char_whitelist: '0123456789.',
+      tessdata_dir: './tessdata_ssd' // Seven-segment display training data
+    }
+  );
+
+  const value = parseFloat(text.trim());
+
+  if (confidence < 85) {
+    throw new Error(`Low confidence reading: ${confidence}%. Manual verification required.`);
+  }
+
+  return { value, confidence };
+}
+
+// Always require user confirmation
+app.post('/api/meters/ocr', async (req, res) => {
+  const { imagePath } = req.body;
+  const { value, confidence } = await extractMeterReading(imagePath);
+
+  // Return for user confirmation, don't auto-save
+  return res.send({
+    extractedValue: value,
+    confidence,
+    requiresConfirmation: true,
+    message: `Detected reading: ${value} kWh (${confidence.toFixed(1)}% confidence)`
+  });
+});
 ```
 
 **Detection:**
-- Run `docker inspect <container>` and check for sensitive data in environment variables
-- Audit `docker-compose.yml` for hardcoded credentials
-- Use tools like GitGuardian to scan for leaked secrets
+- OCR extraction returns obviously wrong values (consumption negative, reading decreased)
+- User corrections exceed 30% of OCR attempts
+- High rate of rejected images
+- Confidence scores consistently below 85%
+
+**Phase to address:** Phase 1 (MVP) - OCR must be reliable or don't ship it
 
 **Sources:**
-- [Docker Compose Secrets Best Practices](https://docs.docker.com/compose/how-tos/environment-variables/best-practices/)
-- [Secrets in Compose](https://docs.docker.com/compose/how-tos/use-secrets/)
-- [Managing Secrets in Docker Compose](https://engineerpalsu.medium.com/managing-environment-variables-and-secrets-in-compose-0315c2aa1886)
-
-**Confidence:** HIGH (official Docker documentation)
+- [MDPI: Smart OCR Application for Meter Reading](https://www.mdpi.com/2673-4591/20/1/25) - Documents 55-63% accuracy for digital meters
+- [GitHub: tessdata_ssd](https://github.com/Shreeshrii/tessdata_ssd) - Seven-segment display training data
+- [Medium: Digital meter reading using CV & ML](https://medium.com/@oviyum/digital-meter-reading-using-cv-ml-53b71f25ed91) - Image quality challenges
+- [Tesseract OCR Guide 2026](https://unstract.com/blog/guide-to-optical-character-recognition-with-tesseract-ocr/) - Current best practices
 
 ---
 
-### Pitfall 2: Authentication Bypass Through URL Manipulation or Session Hijacking
+### 2. Meter Reading Data Integrity Violations
 
-**What goes wrong:**
-Single-user authentication systems often implement naive checks like "if user logged in, show dashboard". Attackers bypass authentication through:
-- URL manipulation (directly accessing `/api/entries` without login)
-- Session token not validated on every request
-- Session tokens in URLs instead of secure HttpOnly cookies
-- No session timeout or absolute expiration
+**What goes wrong:** Storing raw readings without monotonic increase validation allows physically impossible data (readings decrease, consumption negative). Once in database, corrupts all downstream charts and calculations.
 
 **Why it happens:**
-Developers assume "single user = simple auth = less security needed". The system feels private, so authentication is an afterthought. Common pattern:
-```typescript
-// BAD - Only checks on login route
-app.post('/login', async (req, res) => {
-  if (req.body.password === process.env.ADMIN_PASSWORD) {
-    req.session.loggedIn = true;
-  }
-});
-
-// Vulnerable - No auth check!
-app.get('/api/entries', async (req, res) => {
-  return prisma.timeEntry.findMany(); // Anyone can access this
-});
-```
+- Developers treat meter readings like regular timestamps/floats
+- No database constraints enforce business rules (readings must increase)
+- Import accepts Excel data without validation
+- OCR errors pass through unchecked
+- User typos in manual entry not caught
 
 **Consequences:**
-- Unauthenticated access to time tracking data
-- Sensitive project names and time spent exposed
-- API tokens visible in responses if not filtered
-- Session fixation attacks (reuse of session ID before/after login)
-
-**Real-world example:**
-CVE-2025-0108 (Palo Alto Networks): Authentication bypass in management interface allowed unauthenticated attackers to invoke PHP scripts. "Attackers actively exploit these flaws within days of public disclosure."
+- Negative consumption breaks cost calculations
+- Charts show impossible usage spikes/drops
+- Year-over-year comparisons meaningless
+- Cannot trust historical data after backfill
+- Cost projections wildly inaccurate
 
 **Prevention:**
 
-1. **Validate session on EVERY protected route:**
+```prisma
+// Schema with proper constraints
+model MeterReading {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  meterType   String   // "STROM" | "GAS" | "WASSER_WARM"
+  readingDate DateTime @db.Timestamptz(6)
+  reading     Float    // Cumulative kWh/m³
+  consumption Float?   // Computed delta (nullable for first reading)
+  imagePath   String?  // Path to meter photo
+  source      String   @default("MANUAL") // "MANUAL" | "OCR" | "EXCEL_IMPORT"
+  verified    Boolean  @default(false) // User confirmed reading
+  notes       String?
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([meterType, readingDate])
+  @@index([meterType, readingDate])
+}
+```
+
 ```typescript
-// Middleware approach
-const requireAuth = async (req, res, next) => {
-  if (!req.session?.userId || !req.session?.authenticated) {
+// Validation function
+async function validateMeterReading(
+  meterType: string,
+  readingDate: Date,
+  reading: number
+): Promise<void> {
+  // Get previous reading
+  const previousReading = await prisma.meterReading.findFirst({
+    where: {
+      meterType,
+      readingDate: { lt: readingDate }
+    },
+    orderBy: { readingDate: 'desc' }
+  });
+
+  if (previousReading) {
+    // Reading must increase
+    if (reading <= previousReading.reading) {
+      throw new ValidationError(
+        `Reading ${reading} must be greater than previous reading ` +
+        `${previousReading.reading} from ${previousReading.readingDate.toISOString()}`
+      );
+    }
+
+    // Check for unrealistic jumps (>10x monthly average)
+    const consumption = reading - previousReading.reading;
+    const daysDiff = (readingDate.getTime() - previousReading.readingDate.getTime()) / (1000 * 60 * 60 * 24);
+    const monthlyAverage = (consumption / daysDiff) * 30;
+
+    // Get historical average for this meter
+    const historicalAvg = await getMonthlyAverage(meterType);
+
+    if (monthlyAverage > historicalAvg * 10) {
+      throw new ValidationError(
+        `Consumption unusually high: ${consumption.toFixed(1)} ${getUnit(meterType)}. ` +
+        `This is ${(monthlyAverage / historicalAvg).toFixed(1)}x your average. ` +
+        `Please verify reading is correct.`
+      );
+    }
+  }
+}
+
+// Database trigger for extra safety
+CREATE OR REPLACE FUNCTION validate_meter_reading()
+RETURNS TRIGGER AS $$
+DECLARE
+  prev_reading FLOAT;
+BEGIN
+  SELECT reading INTO prev_reading
+  FROM "MeterReading"
+  WHERE "meterType" = NEW."meterType"
+    AND "readingDate" < NEW."readingDate"
+  ORDER BY "readingDate" DESC
+  LIMIT 1;
+
+  IF prev_reading IS NOT NULL AND NEW.reading <= prev_reading THEN
+    RAISE EXCEPTION 'Reading must be greater than previous reading %', prev_reading;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER check_meter_reading_monotonic
+BEFORE INSERT OR UPDATE ON "MeterReading"
+FOR EACH ROW
+EXECUTE FUNCTION validate_meter_reading();
+```
+
+**Detection:**
+- Negative consumption values in database
+- Chart anomalies (impossible drops)
+- Consumption calculation returns negative
+- Cost calculations show refunds when impossible
+
+**Phase to address:** Phase 0 (Schema Design) - Must be in initial schema
+
+**Sources:**
+- [Home Assistant: Utility Meter](https://www.home-assistant.io/integrations/utility_meter/) - Monotonic increase handling
+- [Itron: Reading validation](https://docs.itrontotal.com/IEEMDM/Content/Topics/252929.htm) - Industry validation standards
+- [PNNL: Meter Data Analysis](https://www.pnnl.gov/main/publications/external/technical_reports/PNNL-24331.pdf) - Validation methodologies
+
+---
+
+### 3. Image Storage Architecture Wrong from Start
+
+**What goes wrong:** Storing meter photos as PostgreSQL BYTEA bloats database from <50MB to >5GB for single user's 3 years of monthly photos. Database backups take 100x longer, Prisma queries slow down, Docker volumes fill up.
+
+**Why it happens:**
+- "Just store in database" seems simple
+- Developers don't anticipate volume (36 photos/year × 3 meters × 8 years = 864 photos at ~5MB each = 4.3GB)
+- Prisma makes BYTEA storage "easy" but hides consequences
+- No experience with image-heavy applications
+- Existing system has no file storage setup
+
+**Consequences:**
+- Database backups from 2 minutes to 2+ hours
+- Increased RAM usage (Prisma loads images into memory)
+- Slower queries (large rows affect even non-image queries)
+- Difficult to serve images efficiently (no CDN)
+- Docker volume storage limits hit
+- Database maintenance becomes expensive
+
+**Prevention:**
+
+```typescript
+// File storage configuration
+import path from 'path';
+import fs from 'fs/promises';
+import { v4 as uuid } from 'uuid';
+
+const UPLOAD_DIR = process.env.UPLOAD_DIR || '/app/uploads/meters';
+
+async function saveMeterImage(
+  buffer: Buffer,
+  meterType: string,
+  readingDate: Date
+): Promise<string> {
+  // Organize by year/month for easy browsing
+  const year = readingDate.getFullYear();
+  const month = String(readingDate.getMonth() + 1).padStart(2, '0');
+  const filename = `${meterType}-${year}${month}-${uuid()}.jpg`;
+  const relativePath = `${year}/${month}/${filename}`;
+  const fullPath = path.join(UPLOAD_DIR, relativePath);
+
+  // Ensure directory exists
+  await fs.mkdir(path.dirname(fullPath), { recursive: true });
+
+  // Resize and compress before saving
+  const optimized = await sharp(buffer)
+    .resize(1080, null, { withoutEnlargement: true }) // Max 1080px width
+    .jpeg({ quality: 85 }) // Compress
+    .toBuffer();
+
+  await fs.writeFile(fullPath, optimized);
+
+  return relativePath; // Store relative path in database
+}
+
+// Serve images through authenticated endpoint
+app.get('/api/meters/images/:year/:month/:filename', async (req, res) => {
+  // Verify authentication
+  if (!req.session?.userId) {
     return res.status(401).send({ error: 'Unauthorized' });
   }
 
-  // Verify session hasn't expired
-  const sessionAge = Date.now() - req.session.createdAt;
-  if (sessionAge > SESSION_TIMEOUT_MS) {
-    req.session.destroy();
-    return res.status(401).send({ error: 'Session expired' });
-  }
+  const { year, month, filename } = req.params;
+  const filePath = path.join(UPLOAD_DIR, year, month, filename);
 
-  next();
-};
-
-app.get('/api/entries', requireAuth, async (req, res) => {
-  // Now safe
-});
-```
-
-2. **Regenerate session ID after login:**
-```typescript
-app.post('/login', async (req, res) => {
-  if (await verifyPassword(req.body.password)) {
-    // Prevent session fixation
-    req.session.regenerate((err) => {
-      req.session.userId = 1; // Your single user
-      req.session.authenticated = true;
-      req.session.createdAt = Date.now();
-    });
-  }
-});
-```
-
-3. **Use secure session configuration:**
-```typescript
-app.register(fastifyCookie);
-app.register(fastifySession, {
-  secret: process.env.SESSION_SECRET, // 32+ random bytes
-  cookie: {
-    secure: true,        // HTTPS only
-    httpOnly: true,      // Not accessible via JavaScript
-    sameSite: 'strict',  // CSRF protection
-    maxAge: 1000 * 60 * 60 * 24 // 24 hours
-  },
-  saveUninitialized: false,
-  rolling: true // Reset expiry on activity
-});
-```
-
-4. **Implement absolute and idle timeouts:**
-```typescript
-const MAX_SESSION_AGE = 1000 * 60 * 60 * 24; // 24 hours absolute
-const IDLE_TIMEOUT = 1000 * 60 * 30;          // 30 minutes idle
-
-middleware:
-  if (Date.now() - session.createdAt > MAX_SESSION_AGE) {
-    // Force re-login after 24 hours
-  }
-  if (Date.now() - session.lastActivity > IDLE_TIMEOUT) {
-    // Force re-login after 30 min inactivity
-  }
-  session.lastActivity = Date.now();
-```
-
-5. **Destroy session on logout (server-side):**
-```typescript
-app.post('/logout', requireAuth, async (req, res) => {
-  req.session.destroy((err) => {
-    res.clearCookie('sessionId');
-    res.send({ message: 'Logged out' });
-  });
-});
-```
-
-**Detection:**
-- Try accessing `/api/entries` without logging in
-- Check if session tokens appear in URL or localStorage
-- Verify session invalidates after logout
-- Test session expiry after timeout period
-
-**Sources:**
-- [OWASP Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
-- [A Practical Guide to Authentication Vulnerabilities](https://infosecwriteups.com/a-practical-guide-to-authentication-and-session-management-vulnerabilities-517f5412a02a)
-- [OWASP Top 10 2025: Authentication Failures](https://owasp.org/Top10/2025/A07_2025-Authentication_Failures/)
-- [CVE-2025-0108 PAN-OS Authentication Bypass](https://security.paloaltonetworks.com/CVE-2025-0108)
-
-**Confidence:** HIGH (OWASP official guidance + recent 2025 CVEs)
-
----
-
-### Pitfall 3: Race Conditions in Prisma Upsert with Composite Unique Constraints
-
-**What goes wrong:**
-When multiple sync operations run concurrently (e.g., manual sync while cron job runs), Prisma's `upsert` with composite unique constraints `@@unique([source, externalId])` throws "Unique constraint failed" errors instead of performing atomic upsert.
-
-**Why it happens:**
-Prisma's upsert is not always a true database-level atomic operation. From version 4.6.0+, Prisma tries to use database-level upserts, but if the query doesn't meet specific criteria, Prisma handles it in application code:
-
-1. SELECT to check if record exists
-2. If not found, INSERT
-3. If found, UPDATE
-
-Between steps 1 and 2, another concurrent request can insert the same record, causing a unique constraint violation.
-
-**Your current code is vulnerable:**
-```typescript
-// From toggl.service.ts and tempo.service.ts
-await this.prisma.timeEntry.upsert({
-  where: {
-    source_externalId: { source: 'TOGGL', externalId: entry.id.toString() }
-  },
-  // ... create/update
-});
-```
-
-If two sync operations run simultaneously:
-- Request A checks: "Does TOGGL entry 12345 exist?" → No
-- Request B checks: "Does TOGGL entry 12345 exist?" → No
-- Request A inserts: TOGGL entry 12345
-- Request B tries to insert: TOGGL entry 12345 → CRASH! Unique constraint failed
-
-**Consequences:**
-- Sync jobs fail with cryptic Prisma errors
-- Data not imported despite successful API calls
-- Manual sync button unreliable
-- Cron jobs appear broken
-
-**Prevention:**
-
-**Strategy 1: Transaction-level locking (PostgreSQL only)**
-```typescript
-// Use explicit transaction with SELECT FOR UPDATE
-await prisma.$transaction(async (tx) => {
-  const existing = await tx.timeEntry.findUnique({
-    where: { source_externalId: { source: 'TOGGL', externalId: id } }
-  });
-
-  if (existing) {
-    return tx.timeEntry.update({
-      where: { id: existing.id },
-      data: { duration, description, project, date }
-    });
-  } else {
-    return tx.timeEntry.create({
-      data: { source: 'TOGGL', externalId: id, duration, description, project, date }
-    });
-  }
-}, {
-  isolationLevel: 'Serializable' // Strongest isolation
-});
-```
-
-**Strategy 2: Catch and retry pattern**
-```typescript
-async function upsertWithRetry(data: TimeEntryData, maxRetries = 3) {
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      return await prisma.timeEntry.upsert({
-        where: { source_externalId: { source: data.source, externalId: data.externalId } },
-        update: { duration: data.duration, description: data.description },
-        create: data
-      });
-    } catch (error) {
-      if (error.code === 'P2002' && attempt < maxRetries - 1) {
-        // Unique constraint violation - retry
-        console.log(`Upsert collision detected, retry ${attempt + 1}`);
-        await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1))); // Exponential backoff
-        continue;
-      }
-      throw error; // Give up or different error
-    }
-  }
-}
-```
-
-**Strategy 3: Application-level locking**
-```typescript
-import { Mutex } from 'async-mutex';
-
-class SyncService {
-  private syncMutexes = new Map<string, Mutex>();
-
-  private getMutex(source: string): Mutex {
-    if (!this.syncMutexes.has(source)) {
-      this.syncMutexes.set(source, new Mutex());
-    }
-    return this.syncMutexes.get(source)!;
-  }
-
-  async syncTogglEntries(forceRefresh = false) {
-    const mutex = this.getMutex('TOGGL');
-    const release = await mutex.acquire();
-
-    try {
-      // Your existing sync logic here
-      // Now guaranteed single-threaded per source
-    } finally {
-      release();
-    }
-  }
-}
-```
-
-**Strategy 4: Idempotency tokens in schema (best long-term)**
-```prisma
-model TimeEntry {
-  id             String   @id @default(uuid())
-  source         String
-  externalId     String?
-  date           DateTime
-  duration       Float
-  project        String?
-  description    String?
-  syncRequestId  String?  // Track which sync operation created this
-  createdAt      DateTime @default(now())
-
-  @@unique([source, externalId])
-  @@unique([source, externalId, syncRequestId]) // Prevent double-processing same sync
-  @@index([date])
-}
-```
-
-**Detection:**
-- Run two sync operations simultaneously: `curl -X POST /api/sync/toggl` (twice in parallel)
-- Check logs for Prisma P2002 errors (unique constraint violation)
-- Monitor sync success rate in production
-
-**Sources:**
-- [Prisma Issue #3242: Upsert race condition](https://github.com/prisma/prisma/issues/3242)
-- [Prisma Discussion #24888: Upsert with composite unique constraint](https://github.com/prisma/prisma/discussions/24888)
-- [Prisma Issue #14868: Unique constraint failed when using upsert](https://github.com/prisma/prisma/issues/14868)
-
-**Confidence:** HIGH (confirmed Prisma GitHub issues with community workarounds)
-
----
-
-### Pitfall 4: SQLite to PostgreSQL Data Type Incompatibilities
-
-**What goes wrong:**
-Migrating from SQLite to PostgreSQL causes silent data corruption or query failures due to fundamentally different type systems:
-
-1. **Boolean representation**: SQLite stores as 0/1, PostgreSQL has native BOOLEAN
-2. **DateTime storage**: SQLite uses TEXT (ISO strings) or INTEGER (unix timestamps), PostgreSQL has TIMESTAMP/TIMESTAMPTZ
-3. **Auto-increment**: SQLite uses AUTOINCREMENT, PostgreSQL uses SERIAL/IDENTITY
-4. **Type affinity**: SQLite allows storing "hello" in an INTEGER column, PostgreSQL strictly enforces types
-
-**Your current schema (SQLite):**
-```prisma
-model TimeEntry {
-  id          String   @id @default(uuid())  // Works in both
-  source      String
-  externalId  String?
-  date        DateTime // SQLite: stored as TEXT "2025-01-15T10:30:00Z"
-  duration    Float
-  project     String?
-  description String?
-  createdAt   DateTime @default(now())
-
-  @@unique([source, externalId])
-  @@index([date])
-}
-```
-
-**Why it happens:**
-Developers test with SQLite locally, assuming PostgreSQL "just works". Prisma abstracts some differences, but not all. The codebase stores datetimes as ISO strings, queries filter by date ranges, and comparisons work differently across databases.
-
-**Consequences:**
-
-**Problem 1: DateTime loses timezone information**
-```typescript
-// Your code (from tempo.service.ts):
-date: new Date(entry.startDate) // entry.startDate = "2025-01-15"
-
-// SQLite: Stores as "2025-01-15T00:00:00.000Z" (TEXT)
-// PostgreSQL (TIMESTAMP): Stores as "2025-01-15 00:00:00" - NO TIMEZONE!
-```
-
-When user in Germany logs 8 hours on Jan 15, PostgreSQL stores it in UTC but has no timezone. When querying by date range, results may shift by one day due to timezone conversion assumptions.
-
-**Problem 2: Date comparisons break**
-```sql
--- SQLite: String comparison works
-WHERE date >= '2025-01-01' -- Compares TEXT
-
--- PostgreSQL: Timestamp comparison
-WHERE date >= '2025-01-01' -- Implicitly converts, but timezone matters
-```
-
-**Problem 3: Boolean fields (future-proofing)**
-If you add a `Boolean` field like `isManual`:
-```prisma
-model TimeEntry {
-  isManual Boolean @default(false)
-}
-```
-
-SQLite stores as 0/1 (INTEGER), PostgreSQL as true/false (BOOLEAN). Queries like `WHERE isManual = 1` work in SQLite, fail in PostgreSQL.
-
-**Prevention:**
-
-**1. Use TIMESTAMPTZ for all datetime fields (PostgreSQL-specific)**
-```prisma
-model TimeEntry {
-  date      DateTime @db.Timestamptz(6) // Stores timezone info
-  createdAt DateTime @default(now()) @db.Timestamptz(6)
-}
-```
-
-**2. Always store dates in UTC, convert in application**
-```typescript
-// BAD - Ambiguous timezone
-const date = new Date(entry.startDate); // What timezone is "2025-01-15"?
-
-// GOOD - Explicit UTC
-const date = new Date(entry.startDate + 'T00:00:00Z'); // Force UTC
-
-// BETTER - Use date library
-import { parseISO, startOfDay } from 'date-fns';
-import { utcToZonedTime } from 'date-fns-tz';
-
-const utcDate = startOfDay(parseISO(entry.startDate)); // Midnight UTC
-```
-
-**3. Test migration with real data**
-```bash
-# Export SQLite data
-sqlite3 dev.db ".dump" > backup.sql
-
-# Create PostgreSQL schema
-npx prisma migrate deploy --schema=schema.prisma
-
-# Use pgloader for migration (handles type conversions)
-pgloader sqlite://dev.db postgresql://user:pass@localhost:5432/timetracker
-```
-
-**4. Validate data after migration**
-```sql
--- Check for null dates (corruption)
-SELECT COUNT(*) FROM "TimeEntry" WHERE date IS NULL;
-
--- Check date range sanity
-SELECT MIN(date), MAX(date) FROM "TimeEntry";
-
--- Check duration sanity (negative or extreme values)
-SELECT * FROM "TimeEntry" WHERE duration < 0 OR duration > 24;
-```
-
-**5. Update queries for PostgreSQL dialect**
-```typescript
-// SQLite-compatible query
-const entries = await prisma.timeEntry.findMany({
-  where: { date: { gte: new Date('2025-01-01') } }
-});
-
-// PostgreSQL-specific (if needed)
-const entries = await prisma.$queryRaw`
-  SELECT * FROM "TimeEntry"
-  WHERE date >= ${'2025-01-01'}::timestamp AT TIME ZONE 'UTC'
-`;
-```
-
-**Detection:**
-- Run `npx prisma db pull` after migration, check for type changes
-- Query min/max dates before and after migration, verify consistency
-- Test date range filters with known entries
-- Check for `undefined` or `null` in datetime fields
-
-**Sources:**
-- [SQLite to PostgreSQL Migration Guide](https://render.com/articles/how-to-migrate-from-sqlite-to-postgresql)
-- [Prisma DateTime/Timezone Issues with PostgreSQL](https://medium.com/@basem.deiaa/how-to-fix-prisma-datetime-and-timezone-issues-with-postgresql-1c778aa2d122)
-- [pgloader SQLite to Postgres documentation](https://pgloader.readthedocs.io/en/latest/ref/sqlite.html)
-- [Prisma Issue #27786: DateTime defaults in SQLite can't be read by Prisma](https://github.com/prisma/prisma/issues/27786)
-
-**Confidence:** HIGH (official Prisma docs + community migration guides)
-
----
-
-### Pitfall 5: Docker Networking Exposes Unnecessary Ports
-
-**What goes wrong:**
-Docker containers expose database ports (5432 for PostgreSQL) to the host network, allowing direct database access from outside the Docker network. Attackers on the same network (Hetzner datacenter) or through compromised services can connect directly to PostgreSQL.
-
-**Why it happens:**
-Default docker-compose templates expose all ports for convenience:
-```yaml
-services:
-  db:
-    image: postgres:16
-    ports:
-      - "5432:5432"  # EXPOSED TO HOST!
-```
-
-Developers think "I need to connect from backend", not realizing backend is on the same Docker network and doesn't need host port exposure.
-
-**Consequences:**
-- PostgreSQL accessible from Hetzner host's public IP (if firewall not configured)
-- Brute-force attacks on database password
-- Database enumeration even if password is strong
-- Unnecessary attack surface
-
-**Prevention:**
-
-**1. Don't expose database ports to host**
-```yaml
-services:
-  backend:
-    image: node:20
-    networks:
-      - app-network
-    environment:
-      - DATABASE_URL=postgresql://user@db:5432/timetracker
-    # No ports exposed for DB connection - uses internal network
-
-  db:
-    image: postgres:16
-    networks:
-      - app-network
-    # NO "ports:" SECTION!
-    # Database only accessible from app-network
-
-  frontend:
-    image: nginx:alpine
-    ports:
-      - "80:80"    # Only expose what users need
-      - "443:443"
-    networks:
-      - app-network
-
-networks:
-  app-network:
-    driver: bridge
-```
-
-**2. Disable inter-container communication by default**
-```yaml
-networks:
-  app-network:
-    driver: bridge
-    driver_opts:
-      com.docker.network.bridge.enable_icc: "false"
-```
-
-**3. If you need database access for debugging, use SSH tunnel**
-```bash
-# From your local machine
-ssh -L 5432:localhost:5432 user@hetzner-server
-
-# Inside Hetzner server, temporarily expose
-docker exec -it timetracker_db psql -U user -d timetracker
-
-# Or use Prisma Studio via SSH tunnel
-ssh -L 5555:localhost:5555 user@hetzner-server
-npx prisma studio # On server
-```
-
-**4. Use Docker's internal DNS**
-```typescript
-// Backend connects via service name, not host IP
-const DATABASE_URL = process.env.DATABASE_URL ||
-  'postgresql://user:pass@db:5432/timetracker';
-  //                        ^^^ service name, not "localhost" or IP
-```
-
-**Detection:**
-- Run `docker ps` and check PORTS column for `0.0.0.0:5432->5432/tcp`
-- Try connecting to database from host: `psql -h localhost -U user -d timetracker`
-- Scan from another machine: `nmap -p 5432 hetzner-server-ip`
-
-**Sources:**
-- [Docker Security Best Practices](https://spacelift.io/blog/docker-security)
-- [Docker Container Security Vulnerabilities](https://www.aikido.dev/blog/docker-container-security-vulnerabilities)
-- [Hetzner Docker Firewall Tutorial](https://community.hetzner.com/tutorials/debian-docker-install-dualstack-firewall/)
-
-**Confidence:** HIGH (official Docker docs + Hetzner community tutorials)
-
----
-
-## Moderate Pitfalls
-
-Mistakes that cause delays, technical debt, or unreliable behavior.
-
-### Pitfall 6: Timezone and DST Edge Cases in Time Tracking
-
-**What goes wrong:**
-Time entries logged near midnight or during Daylight Saving Time transitions appear duplicated, missing, or on the wrong date. Users log 8 hours on March 10, but system shows 7 hours (DST spring forward) or 9 hours (DST fall back).
-
-**Why it happens:**
-Your current code stores dates without timezone context:
-```typescript
-// From toggl.service.ts
-date: new Date(entry.start) // entry.start = "2025-03-10T02:30:00-05:00"
-```
-
-When DST transitions happen:
-- **Spring forward** (March): 2:00 AM becomes 3:00 AM, the hour 2:00-2:59 doesn't exist
-- **Fall back** (November): 2:00 AM happens twice (once before, once after)
-
-If user starts timer at 1:45 AM and stops at 2:15 AM on DST spring forward day:
-- Start: 1:45 AM EST (valid)
-- End: 3:15 AM EDT (2:15 doesn't exist!)
-- Duration calculation breaks
-
-**Real-world scenarios:**
-
-**Scenario 1: Duplicate entries near midnight**
-```
-User in New York (EST) logs time: 11:30 PM - 12:30 AM
-Backend stores in UTC: 4:30 AM - 5:30 AM (next day)
-Display converts back: Shows on wrong date depending on viewing timezone
-```
-
-**Scenario 2: DST transition day shows wrong hours**
-```
-March 10, 2025 (DST spring forward):
-User logs 9 AM - 5 PM (8 hours)
-System calculates: Day only had 23 hours
-Daily aggregation shows: 7 hours? 8 hours? Depends on calculation
-```
-
-**Consequences:**
-- Users complain "I logged 8 hours, but chart shows 7"
-- Duplicate entries when syncing across DST boundary
-- Data aggregation broken for DST transition days
-- Week/month summaries don't match detailed view
-
-**Prevention:**
-
-**1. Store all times in UTC (database)**
-```typescript
-// GOOD - Explicit UTC storage
-const utcDate = new Date(entry.start); // Comes with timezone from API
-await prisma.timeEntry.create({
-  data: {
-    date: utcDate, // Prisma stores as UTC TIMESTAMPTZ
-    duration: durationSeconds / 3600
-  }
-});
-```
-
-**2. Use date-only fields for aggregation, not timestamps**
-```typescript
-// BAD - Timestamp-based date comparison
-const entries = await prisma.timeEntry.findMany({
-  where: {
-    date: {
-      gte: new Date('2025-01-01T00:00:00'), // Which timezone?
-      lt: new Date('2025-01-02T00:00:00')
-    }
-  }
-});
-
-// GOOD - Use date strings for day-based queries
-const entries = await prisma.timeEntry.findMany({
-  where: {
-    date: {
-      gte: new Date('2025-01-01T00:00:00Z'), // Explicit UTC
-      lt: new Date('2025-01-02T00:00:00Z')
-    }
-  }
-});
-
-// BETTER - Use date-only column if aggregating by date
-// Add a computed field in schema
-model TimeEntry {
-  date      DateTime @db.Timestamptz(6)
-  dateOnly  String   // "2025-01-15" - computed from date in user's timezone
-}
-```
-
-**3. Handle DST explicitly in aggregations**
-```typescript
-// Don't rely on "24 hours = 1 day"
-import { startOfDay, endOfDay, parseISO } from 'date-fns';
-import { zonedTimeToUtc, utcToZonedTime } from 'date-fns-tz';
-
-function getDayRange(dateString: string, userTimezone: string) {
-  const localDate = parseISO(dateString); // "2025-03-10"
-  const startLocal = startOfDay(localDate);
-  const endLocal = endOfDay(localDate);
-
-  // Convert to UTC for database query
-  const startUtc = zonedTimeToUtc(startLocal, userTimezone);
-  const endUtc = zonedTimeToUtc(endLocal, userTimezone);
-
-  return { startUtc, endUtc };
-}
-
-// Usage
-const { startUtc, endUtc } = getDayRange('2025-03-10', 'America/New_York');
-const entries = await prisma.timeEntry.findMany({
-  where: { date: { gte: startUtc, lt: endUtc } }
-});
-```
-
-**4. Test DST transition dates specifically**
-```typescript
-// Add test cases for DST boundaries
-describe('Time entry aggregation', () => {
-  it('handles DST spring forward (23-hour day)', async () => {
-    const dstDate = '2025-03-10'; // Spring forward in 2025
-    // Create entries spanning 1 AM - 4 AM (includes 2 AM skip)
-    // Verify total duration is correct
-  });
-
-  it('handles DST fall back (25-hour day)', async () => {
-    const dstDate = '2025-11-02'; // Fall back in 2025
-    // Create entries spanning 1 AM - 3 AM (includes 2 AM twice)
-    // Verify no duplicates
-  });
-
-  it('handles entries crossing midnight', async () => {
-    // Start 11:30 PM, end 12:30 AM next day
-    // Verify correct date assignment
-  });
-});
-```
-
-**5. Display timezone to user**
-```typescript
-// Frontend: Always show which timezone data is displayed in
-<div>
-  Showing times in: {Intl.DateTimeFormat().resolvedOptions().timeZone}
-  <select onChange={handleTimezoneChange}>
-    <option value="UTC">UTC</option>
-    <option value="America/New_York">New York</option>
-    <option value="Europe/Berlin">Berlin</option>
-  </select>
-</div>
-```
-
-**Detection:**
-- Create test entry on March 10, 2025 (DST) spanning 1:30 AM - 3:30 AM
-- Check if duration is calculated correctly (should be 1 hour, not 2)
-- Query entries by date on DST transition day, verify count
-- Compare weekly aggregations before/after DST transition
-
-**Sources:**
-- [International SaaS Timezone Edge Cases](https://dev.to/tomjstone/international-saas-nightmare-timezone-edge-cases-and-how-to-solve-them-once-and-for-all-57hn)
-- [Edge Cases: Dates & Times](https://www.thedroidsonroids.com/blog/edge-cases-in-app-and-backend-development-dates-and-time)
-- [Handling Timezone Issues in Cron Jobs 2025](https://dev.to/cronmonitor/handling-timezone-issues-in-cron-jobs-2025-guide-52ii)
-- [W3C Working with TimeZones](https://www.w3.org/International/wiki/WorkingWithTimeZones)
-
-**Confidence:** MEDIUM (community best practices, not Toggl/Tempo specific docs)
-
----
-
-### Pitfall 7: Toggl API Rate Limiting (New 2025 Limits)
-
-**What goes wrong:**
-Starting September 5, 2025, Toggl introduced strict API rate limits. Sync operations fail with HTTP 429 errors when limits are exceeded:
-- **Free plan**: 30 requests/hour/user/org
-- **Paid plans**: Higher limits but still capped
-- **Leaky bucket**: 1 request/second safe window
-
-**Why it happens:**
-Your current code has no rate limiting awareness:
-```typescript
-// From toggl.service.ts
-const response = await axios.get('https://api.track.toggl.com/api/v9/me/time_entries', {
-  params: { start_date, end_date }
-});
-```
-
-If you:
-- Sync multiple date ranges in parallel
-- Have cron job running while user manually syncs
-- Import large date ranges (3+ months)
-- Retry failed requests without backoff
-
-You'll hit rate limits quickly.
-
-**Consequences:**
-- Sync jobs fail silently with 429 errors
-- Users can't refresh data when needed
-- Cron jobs marked as "failed" despite API working
-- Data becomes stale, defeating purpose of real-time aggregation
-
-**Prevention:**
-
-**1. Check rate limit headers in responses**
-```typescript
-async syncTogglEntries() {
-  const response = await axios.get('https://api.track.toggl.com/api/v9/me/time_entries', {
-    params: { start_date, end_date }
-  });
-
-  // Toggl provides these headers
-  const remaining = response.headers['x-toggl-quota-remaining'];
-  const resetsIn = response.headers['x-toggl-quota-resets-in'];
-
-  console.log(`[Toggl] Rate limit: ${remaining} requests remaining, resets in ${resetsIn}s`);
-
-  if (parseInt(remaining) < 5) {
-    console.warn('[Toggl] Approaching rate limit, backing off...');
-    await this.rateLimiter.waitForReset(parseInt(resetsIn));
-  }
-
-  return response.data;
-}
-```
-
-**2. Implement exponential backoff for 429 responses**
-```typescript
-import axiosRetry from 'axios-retry';
-
-const togglClient = axios.create();
-axiosRetry(togglClient, {
-  retries: 3,
-  retryDelay: (retryCount, error) => {
-    if (error.response?.status === 429) {
-      const resetSeconds = error.response.headers['x-toggl-quota-resets-in'];
-      return (parseInt(resetSeconds) || 60) * 1000; // Wait until quota resets
-    }
-    return axiosRetry.exponentialDelay(retryCount); // Standard backoff
-  },
-  retryCondition: (error) => {
-    return error.response?.status === 429 || axiosRetry.isNetworkOrIdempotentRequestError(error);
-  }
-});
-```
-
-**3. Use caching aggressively (you already have this)**
-```typescript
-// Your current implementation (GOOD)
-const CACHE_DURATION_MS = 10 * 60 * 1000; // 10 minutes
-
-// Extend for longer standard syncs
-const CACHE_DURATION_MS = 1 * 60 * 60 * 1000; // 1 hour for standard syncs
-```
-
-**4. Batch requests intelligently**
-```typescript
-// BAD - Multiple API calls
-for (const month of ['2025-01', '2025-02', '2025-03']) {
-  await syncTogglMonth(month); // 3 API calls
-}
-
-// GOOD - Single API call with wider range
-await syncTogglRange('2025-01-01', '2025-03-31'); // 1 API call
-```
-
-**5. Add rate limit tracking to database**
-```prisma
-model SyncStatus {
-  id               String   @id @default(uuid())
-  source           String   // "TOGGL" | "TEMPO"
-  lastSyncAt       DateTime
-  rateLimitResetAt DateTime?
-  quotaRemaining   Int?
-
-  @@unique([source])
-}
-```
-
-```typescript
-async syncTogglEntries() {
-  // Check if we're in rate-limit cooldown
-  const status = await prisma.syncStatus.findUnique({
-    where: { source: 'TOGGL' }
-  });
-
-  if (status?.rateLimitResetAt && new Date() < status.rateLimitResetAt) {
-    throw new Error(`Rate limited until ${status.rateLimitResetAt.toISOString()}`);
-  }
-
-  // Perform sync...
-
-  // Update status after sync
-  await prisma.syncStatus.upsert({
-    where: { source: 'TOGGL' },
-    update: {
-      lastSyncAt: new Date(),
-      quotaRemaining: parseInt(response.headers['x-toggl-quota-remaining']),
-      rateLimitResetAt: response.headers['x-toggl-quota-resets-in']
-        ? new Date(Date.now() + parseInt(response.headers['x-toggl-quota-resets-in']) * 1000)
-        : null
-    },
-    create: { source: 'TOGGL', lastSyncAt: new Date() }
-  });
-}
-```
-
-**6. Notify user when rate limited**
-```typescript
-// Frontend: Display rate limit status
-if (syncError?.response?.status === 429) {
-  const resetIn = syncError.response.headers['x-toggl-quota-resets-in'];
-  showNotification(`Rate limited. Try again in ${Math.ceil(resetIn / 60)} minutes.`);
-}
-```
-
-**Detection:**
-- Trigger manual sync multiple times rapidly (30+ times in 10 minutes)
-- Check for HTTP 429 responses
-- Verify logs show rate limit headers
-- Test with cron job running during manual sync
-
-**Sources:**
-- [Toggl API & Webhook Limits](https://support.toggl.com/api-webhook-limits)
-- [Toggl API Limits Enforcement Discussion](https://community.toggl.com/t/api-limits-enforcement/2331)
-- [Toggl API FAQs about Limits](https://support.toggl.com/en/articles/11623558-faqs-about-api-limits)
-
-**Confidence:** HIGH (official Toggl support docs, September 2025 announcement)
-
----
-
-### Pitfall 8: UUID v4 Collision Risk at Scale
-
-**What goes wrong:**
-Your schema uses `@default(uuid())` for IDs. While UUID v4 collisions are theoretically rare, they can occur in distributed systems generating IDs rapidly. More critically, UUIDs:
-- Are not sortable (random order)
-- Don't indicate creation time
-- Have poor database indexing performance
-- Don't compress well
-
-**Why it happens:**
-Prisma defaults to UUID v4 for `@default(uuid())`. Developers assume "UUID = unique" without considering:
-- Multiple servers generating IDs simultaneously
-- Virtual machine clones with same RNG seed
-- Client-side ID generation in browser
-
-**Your current schema:**
-```prisma
-model TimeEntry {
-  id String @id @default(uuid()) // UUID v4 - random
-}
-```
-
-**Consequences:**
-- Slight collision risk (1 in 10^18 at millions of IDs/second)
-- Database queries slower due to random index order
-- No way to sort by creation time from ID alone
-- Storage overhead (36 characters as string)
-
-**Prevention:**
-
-**Option 1: Use UUID v7 (recommended for PostgreSQL)**
-UUID v7 (RFC 9562, standardized 2024) includes timestamp in first 48 bits, providing:
-- Monotonic ordering (chronological)
-- Same collision resistance as v4
-- Better database indexing
-
-```prisma
-// Requires Prisma 5.x+ and uuid v7 function
-model TimeEntry {
-  id String @id @default(dbgenerated("gen_uuid_v7()"))
-}
-```
-
-Or use library in application:
-```typescript
-import { v7 as uuidv7 } from 'uuid';
-
-const id = uuidv7(); // "018e6a8c-5a5f-7e2e-a9c7-3e0f1234567"
-//         ^^^^^^^^^^ timestamp portion
-```
-
-**Option 2: Use Cuid2 (recommended for multi-database)**
-Cuid2 designed specifically to avoid collisions:
-- 4,000,000,000,000,000,000 IDs for 50% collision chance
-- Lexicographically sortable
-- Shorter than UUID (24 characters)
-
-```typescript
-import { createId } from '@paralleldrive/cuid2';
-
-model TimeEntry {
-  id String @id // Generate in application
-}
-
-// Application code
-const id = createId(); // "cm1xyz..."
-await prisma.timeEntry.create({
-  data: { id, source, duration, ... }
-});
-```
-
-**Option 3: Keep UUID but use v4 with awareness**
-```typescript
-// If staying with UUID v4, add collision detection
-async function createEntryWithRetry(data: TimeEntryData, maxRetries = 3) {
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      return await prisma.timeEntry.create({ data });
-    } catch (error) {
-      if (error.code === 'P2002' && error.meta?.target?.includes('PRIMARY')) {
-        // Primary key collision - regenerate ID
-        data.id = uuidv4();
-        continue;
-      }
-      throw error;
-    }
-  }
-}
-```
-
-**Option 4: Use auto-incrementing integers (simple, but not distributed-safe)**
-```prisma
-model TimeEntry {
-  id Int @id @default(autoincrement())
-}
-```
-Only safe for single-database deployments. Breaks if you later shard or use multi-region replicas.
-
-**For your project:**
-Given single-user, single-server deployment, UUID v4 is fine. **BUT** if you migrate to PostgreSQL, consider UUID v7 for better performance:
-
-```sql
--- PostgreSQL: Add uuid v7 function
-CREATE OR REPLACE FUNCTION gen_uuid_v7()
-RETURNS uuid
-AS $$
-  SELECT encode(
-    set_bit(
-      set_bit(
-        overlay('\x00000000000000000000000000000000'::bytea
-          placing substring(int8send(floor(extract(epoch from clock_timestamp()) * 1000)::bigint) from 3)
-          from 1 for 6
-        ),
-        52, 1
-      ),
-      53, 1
-    ) || gen_random_bytes(10),
-    'hex'
-  )::uuid;
-$$ LANGUAGE SQL VOLATILE;
-```
-
-**Detection:**
-- Check database query plans: `EXPLAIN SELECT * FROM TimeEntry ORDER BY id`
-- Monitor index fragmentation on ID column
-- Attempt to sort entries by ID, verify chronological order (will be random with v4)
-
-**Sources:**
-- [UUID v4 vs v7 vs ULID Comparison](https://www.ixam.net/en/blog/2025/08/uuidv4v7ulid/)
-- [Cuid2 - Collision-Resistant IDs](https://github.com/paralleldrive/cuid2)
-- [UUID vs NanoID vs CUID](https://www.wisp.blog/blog/uuid-vs-cuid-vs-nanoid-choosing-the-right-id-generator-for-your-application)
-- [Why Nano ID is Better Than UUID](https://www.mtechzilla.com/blogs/why-nano-id-is-better-than-uuid)
-
-**Confidence:** MEDIUM (UUIDs work fine for your scale, but v7 is best practice for 2025)
-
----
-
-### Pitfall 9: Missing Pagination on Time Entry Queries
-
-**What goes wrong:**
-As time entries grow to thousands of records (years of data), API responses become slow and memory-intensive. Frontend crashes trying to render 10,000+ entries. Database queries scan entire table.
-
-**Why it happens:**
-Your current API likely returns all entries:
-```typescript
-// Naive implementation
-app.get('/api/entries', async (req, res) => {
-  const entries = await prisma.timeEntry.findMany(); // ALL ENTRIES!
-  return res.send(entries);
-});
-```
-
-After 1 year: ~2,000 entries (250 workdays * 8 hours of tracking)
-After 5 years: ~10,000 entries
-
-**Consequences:**
-- API responses take 5+ seconds
-- Frontend hangs rendering large tables
-- Database memory exhausted on complex queries
-- Network payload size exceeds reasonable limits (MB of JSON)
-
-**Prevention:**
-
-**1. Add pagination to schema/API**
-```typescript
-interface PaginationParams {
-  page?: number;
-  limit?: number;
-  cursor?: string; // For cursor-based pagination
-}
-
-app.get('/api/entries', async (req, res) => {
-  const page = parseInt(req.query.page as string) || 1;
-  const limit = Math.min(parseInt(req.query.limit as string) || 50, 1000); // Cap at 1000
-  const skip = (page - 1) * limit;
-
-  const [entries, total] = await Promise.all([
-    prisma.timeEntry.findMany({
-      skip,
-      take: limit,
-      orderBy: { date: 'desc' }
-    }),
-    prisma.timeEntry.count()
-  ]);
-
-  return res.send({
-    data: entries,
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages: Math.ceil(total / limit)
-    }
-  });
-});
-```
-
-**2. Use cursor-based pagination for large datasets**
-```typescript
-app.get('/api/entries', async (req, res) => {
-  const limit = 50;
-  const cursor = req.query.cursor as string | undefined;
-
-  const entries = await prisma.timeEntry.findMany({
-    take: limit + 1, // Fetch one extra to detect if there are more
-    cursor: cursor ? { id: cursor } : undefined,
-    orderBy: { date: 'desc' }
-  });
-
-  const hasMore = entries.length > limit;
-  const data = hasMore ? entries.slice(0, -1) : entries;
-  const nextCursor = hasMore ? data[data.length - 1].id : null;
-
-  return res.send({ data, nextCursor, hasMore });
-});
-```
-
-**3. Default to date range filters**
-```typescript
-// Default to last 30 days if no filter provided
-const startDate = req.query.startDate
-  ? new Date(req.query.startDate as string)
-  : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
-const endDate = req.query.endDate
-  ? new Date(req.query.endDate as string)
-  : new Date();
-
-const entries = await prisma.timeEntry.findMany({
-  where: {
-    date: { gte: startDate, lte: endDate }
-  },
-  orderBy: { date: 'desc' }
-});
-```
-
-**4. Add database indexes for common queries**
-```prisma
-model TimeEntry {
-  id          String   @id @default(uuid())
-  source      String
-  externalId  String?
-  date        DateTime
-  duration    Float
-  project     String?
-  description String?
-  createdAt   DateTime @default(now())
-
-  @@unique([source, externalId])
-  @@index([date, source]) // Composite index for filtered queries
-  @@index([date])         // Already exists
-  @@index([project])      // If filtering by project is common
-}
-```
-
-**Detection:**
-- Load API with 1,000+ test entries
-- Measure response time: `curl -w "%{time_total}\n" http://localhost:3000/api/entries`
-- Check database query execution time: `EXPLAIN ANALYZE SELECT * FROM TimeEntry`
-- Monitor memory usage during query
-
-**Sources:**
-- [Prisma Pagination Documentation](https://www.prisma.io/docs/orm/prisma-client/queries/pagination)
-
-**Confidence:** HIGH (standard best practice, Prisma official docs)
-
----
-
-### Pitfall 10: No Duplicate Detection Across Sources
-
-**What goes wrong:**
-User manually logs 8 hours in Toggl for "forHim" project. Separately, they log 8 hours in Tempo for "WEKA-199" (same work, different tracking system). System shows 16 hours for the day instead of 8.
-
-**Why it happens:**
-Your current schema enforces uniqueness within a source, but not across sources:
-```prisma
-@@unique([source, externalId]) // Unique within Toggl, unique within Tempo
-```
-
-Entry from Toggl and entry from Tempo for same time period are stored as separate entries. No logic detects "these are the same work session".
-
-**Real-world scenario:**
-```
-Toggl entry:
-  source: "TOGGL"
-  externalId: "12345"
-  date: 2025-01-15 09:00:00
-  duration: 8
-  project: "forHim"
-
-Tempo entry:
-  source: "TEMPO"
-  externalId: "67890"
-  date: 2025-01-15 09:00:00
-  duration: 8
-  project: "WEKA-199"
-
-Dashboard shows: 16 hours on Jan 15 (WRONG!)
-```
-
-**Consequences:**
-- Inflated time reports (user appears to work 16-hour days)
-- Billing double-charged if using for invoicing
-- Charts show unrealistic work patterns
-- Loss of trust in system accuracy
-
-**Prevention:**
-
-**Strategy 1: Fuzzy duplicate detection**
-```typescript
-async function detectDuplicates(newEntry: TimeEntry): Promise<TimeEntry | null> {
-  const OVERLAP_THRESHOLD = 0.8; // 80% overlap = likely duplicate
-
-  // Find entries from OTHER sources on same date
-  const candidates = await prisma.timeEntry.findMany({
-    where: {
-      source: { not: newEntry.source },
-      date: {
-        gte: new Date(newEntry.date.getTime() - 24 * 60 * 60 * 1000),
-        lte: new Date(newEntry.date.getTime() + 24 * 60 * 60 * 1000)
-      }
-    }
-  });
-
-  for (const candidate of candidates) {
-    const timeDiff = Math.abs(newEntry.date.getTime() - candidate.date.getTime());
-    const durationDiff = Math.abs(newEntry.duration - candidate.duration);
-
-    // Same time window (within 1 hour) and similar duration (within 0.5 hours)
-    if (timeDiff < 60 * 60 * 1000 && durationDiff < 0.5) {
-      return candidate; // Likely duplicate
-    }
-  }
-
-  return null;
-}
-
-// In sync service
-for (const entry of togglEntries) {
-  const duplicate = await detectDuplicates(entry);
-  if (duplicate) {
-    console.log(`[Toggl] Skipping duplicate entry (matches ${duplicate.source} entry ${duplicate.id})`);
-    continue;
-  }
-  await prisma.timeEntry.upsert({ /* ... */ });
-}
-```
-
-**Strategy 2: Link related entries**
-```prisma
-model TimeEntry {
-  id          String   @id @default(uuid())
-  source      String
-  externalId  String?
-  date        DateTime
-  duration    Float
-  project     String?
-  description String?
-
-  // Link duplicates
-  duplicateOf String?  // ID of canonical entry
-  duplicate   TimeEntry? @relation("Duplicates", fields: [duplicateOf], references: [id])
-  duplicates  TimeEntry[] @relation("Duplicates")
-
-  @@unique([source, externalId])
-  @@index([date])
-}
-```
-
-```typescript
-// In queries, exclude duplicates
-const entries = await prisma.timeEntry.findMany({
-  where: {
-    date: { gte: startDate, lte: endDate },
-    duplicateOf: null // Only show canonical entries
-  }
-});
-
-// Show duplicate metadata in UI
-const entryWithDuplicates = await prisma.timeEntry.findUnique({
-  where: { id },
-  include: { duplicates: true }
-});
-// UI: "This entry also tracked in Tempo as WEKA-199"
-```
-
-**Strategy 3: User-driven merge**
-```typescript
-// API endpoint to merge entries
-app.post('/api/entries/merge', async (req, res) => {
-  const { primaryId, duplicateIds } = req.body;
-
-  await prisma.$transaction(async (tx) => {
-    // Mark duplicates
-    await tx.timeEntry.updateMany({
-      where: { id: { in: duplicateIds } },
-      data: { duplicateOf: primaryId }
-    });
-
-    // Optionally: combine durations if needed
-    const primary = await tx.timeEntry.findUnique({ where: { id: primaryId } });
-    const duplicates = await tx.timeEntry.findMany({ where: { id: { in: duplicateIds } } });
-
-    const totalDuration = primary.duration + duplicates.reduce((sum, d) => sum + d.duration, 0);
-
-    await tx.timeEntry.update({
-      where: { id: primaryId },
-      data: { duration: totalDuration }
-    });
-  });
-});
-```
-
-**Strategy 4: Source priority system**
-```typescript
-// Configure which source is "canonical"
-const SOURCE_PRIORITY = {
-  'TEMPO': 1,  // Highest priority (official time tracking)
-  'TOGGL': 2,  // Lower priority (personal tracking)
-  'MANUAL': 3  // Lowest priority
-};
-
-async function resolveConflict(entries: TimeEntry[]): TimeEntry {
-  return entries.sort((a, b) =>
-    SOURCE_PRIORITY[a.source] - SOURCE_PRIORITY[b.source]
-  )[0];
-}
-```
-
-**Detection:**
-- Create identical entries in Toggl and Tempo for same date/time
-- Query total duration for that date
-- Check if sum is doubled
-- Review chart for days with unrealistic hours (>12)
-
-**Sources:**
-- [Duplicate Entry Detection AI Agents](https://relevanceai.com/agent-templates-tasks/duplicate-entry-detection)
-- [AI Reconciliation Use Cases](https://www.ledge.co/content/ai-reconciliation)
-- [Cross-Dataset Deduplication Methods](https://www.emergentmind.com/topics/cross-dataset-deduplication)
-
-**Confidence:** MEDIUM (general data reconciliation practices, not time-tracking specific)
-
----
-
-## Minor Pitfalls
-
-Mistakes that cause annoyance or edge case bugs, but are easily fixable.
-
-### Pitfall 11: Hetzner Firewall Not Configured for Docker
-
-**What goes wrong:**
-After deploying to Hetzner, Docker containers are accessible from public internet because UFW (firewall) was configured before Docker installation. Docker bypasses UFW by directly manipulating iptables, exposing ports despite firewall rules.
-
-**Why it happens:**
-Docker modifies iptables directly on start. If UFW is configured as:
-```bash
-ufw default deny incoming
-ufw allow 22
-ufw allow 80
-ufw allow 443
-ufw enable
-```
-
-Then Docker starts and exposes ports, Docker adds its own iptables rules that take precedence, bypassing UFW.
-
-**Consequences:**
-- Database port 5432 accessible from internet (if exposed in docker-compose)
-- Backend API port 3000 accessible directly (bypassing reverse proxy)
-- Potential unauthorized access
-
-**Prevention:**
-
-**1. Configure UFW before Docker**
-```bash
-# Initial setup (one-time)
-apt update && apt upgrade -y
-ufw default deny incoming
-ufw default allow outgoing
-ufw allow 22/tcp  # SSH
-ufw allow 80/tcp  # HTTP
-ufw allow 443/tcp # HTTPS
-ufw enable
-```
-
-**2. Configure Docker to respect UFW**
-Edit `/etc/docker/daemon.json`:
-```json
-{
-  "iptables": false
-}
-```
-
-Then restart Docker:
-```bash
-systemctl restart docker
-```
-
-**WARNING:** This disables Docker's automatic iptables rules. You must manually configure networking.
-
-**3. Use Hetzner Cloud Firewall**
-```bash
-# Via Hetzner Cloud Console or CLI
-hcloud firewall create --name time-tracker-fw
-hcloud firewall add-rule time-tracker-fw --direction in --protocol tcp --port 22 --source-ips 0.0.0.0/0
-hcloud firewall add-rule time-tracker-fw --direction in --protocol tcp --port 80 --source-ips 0.0.0.0/0
-hcloud firewall add-rule time-tracker-fw --direction in --protocol tcp --port 443 --source-ips 0.0.0.0/0
-hcloud firewall apply-to-server time-tracker-fw --server <server-id>
-```
-
-**4. Only expose necessary ports in docker-compose**
-```yaml
-services:
-  backend:
-    # Don't expose to host
-    # Internal network only
-
-  frontend:
-    ports:
-      - "80:80"   # Only expose what's needed
-      - "443:443"
-
-  db:
-    # NO PORTS EXPOSED
-```
-
-**5. Add Fail2ban for additional protection**
-```bash
-apt install fail2ban -y
-cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local
-
-# Edit jail.local
-[sshd]
-enabled = true
-port = 22
-maxretry = 3
-bantime = 3600
-```
-
-**Detection:**
-- From external machine: `nmap -p 1-65535 hetzner-server-ip`
-- Check Docker iptables rules: `iptables -L DOCKER`
-- Verify UFW status: `ufw status verbose`
-
-**Sources:**
-- [Hetzner Debian Docker Install with Firewall](https://community.hetzner.com/tutorials/debian-docker-install-dualstack-firewall/)
-- [Setting up and hardening Hetzner server](https://danieltenner.com/setting-up-and-hardening-a-hetzner-server/)
-- [Self-Hosting on Hetzner with Docker](https://www.tariqismail.com/posts/how-i-set-up-a-vps-on-hetzner-cloud-to-host-self-hosted-apps-with-docker-portainer)
-
-**Confidence:** HIGH (Hetzner community tutorials + Docker official docs)
-
----
-
-### Pitfall 12: No Health Checks on Docker Services
-
-**What goes wrong:**
-Docker Compose shows all containers as "running", but application is unresponsive. Database crashed but container is still up. Backend hung on startup but Docker reports "healthy".
-
-**Why it happens:**
-Default docker-compose has no health checks:
-```yaml
-services:
-  backend:
-    image: node:20
-    # No healthcheck defined
-```
-
-Docker only checks "is process running?", not "is application responding?"
-
-**Consequences:**
-- False positive monitoring (container up, app down)
-- Requests fail despite container showing "healthy"
-- Restart policies don't trigger when app hangs
-
-**Prevention:**
-
-**1. Add health checks to all services**
-```yaml
-services:
-  backend:
-    image: node:20
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  db:
-    image: postgres:16
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  frontend:
-    image: nginx:alpine
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-```
-
-**2. Implement health check endpoint in backend**
-```typescript
-// backend/src/server.ts
-app.get('/health', async (req, res) => {
   try {
-    // Check database connectivity
-    await prisma.$queryRaw`SELECT 1`;
+    const stats = await fs.stat(filePath);
+    if (!stats.isFile()) {
+      return res.status(404).send({ error: 'Image not found' });
+    }
 
-    res.send({
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime()
-    });
+    // Send file with caching headers
+    res.header('Content-Type', 'image/jpeg');
+    res.header('Cache-Control', 'private, max-age=31536000'); // 1 year
+
+    const stream = await fs.readFile(filePath);
+    return res.send(stream);
   } catch (error) {
-    res.status(503).send({
-      status: 'unhealthy',
-      error: error.message
-    });
+    if (error.code === 'ENOENT') {
+      return res.status(404).send({ error: 'Image not found' });
+    }
+    throw error;
   }
 });
 ```
 
-**3. Configure restart policy based on health**
 ```yaml
+# docker-compose.yml - Add volume for images
 services:
   backend:
-    restart: unless-stopped
-    healthcheck:
-      # ... as above
-    depends_on:
-      db:
-        condition: service_healthy  # Wait for DB health
-```
-
-**Detection:**
-- Run `docker compose ps` and check HEALTH column
-- Manually trigger health check: `docker exec <container> curl http://localhost:3000/health`
-- Simulate failure: stop Prisma connection, verify health check fails
-
-**Sources:**
-- [Docker Compose Healthcheck Reference](https://docs.docker.com/compose/compose-file/compose-file-v3/#healthcheck)
-
-**Confidence:** HIGH (official Docker docs)
-
----
-
-### Pitfall 13: Cache Files Not in .gitignore
-
-**What goes wrong:**
-`toggl_cache.json` and `tempo_cache.json` are committed to git, exposing:
-- Sensitive time entry data (project names, descriptions)
-- API response structure (leaks implementation details)
-- Personal work patterns (when you work, how long)
-
-**Why it happens:**
-Cache files created during development. Developer forgets to add to `.gitignore` before committing.
-
-**Your current .gitignore status:**
-According to git status, `tempo_cache.json` was tracked and only recently updated in `.gitignore` (commit 60d815b).
-
-**Consequences:**
-- Sensitive data in git history forever
-- Cache conflicts when multiple developers/deployments
-- Merge conflicts on every sync
-
-**Prevention:**
-
-**1. Ensure cache files in .gitignore**
-```bash
-# .gitignore
-backend/toggl_cache.json
-backend/tempo_cache.json
-backend/*.cache.json
-*.cache
-```
-
-**2. Remove from git history (if already committed)**
-```bash
-git filter-branch --force --index-filter \
-  'git rm --cached --ignore-unmatch backend/toggl_cache.json backend/tempo_cache.json' \
-  --prune-empty --tag-name-filter cat -- --all
-```
-
-**3. Use environment-specific cache locations**
-```typescript
-const CACHE_FILE = process.env.CACHE_DIR
-  ? path.join(process.env.CACHE_DIR, 'toggl_cache.json')
-  : path.join(__dirname, '../../toggl_cache.json');
-```
-
-In production:
-```yaml
-services:
-  backend:
-    environment:
-      - CACHE_DIR=/var/cache/timetracker
     volumes:
-      - cache-data:/var/cache/timetracker
+      - meter-images:/app/uploads/meters
+    environment:
+      - UPLOAD_DIR=/app/uploads/meters
 
 volumes:
-  cache-data:
+  meter-images:
+    driver: local
 ```
 
-**Detection:**
-- Run `git ls-files | grep cache`
-- Check git history: `git log --all --full-history -- "*cache.json"`
-
-**Confidence:** HIGH (git best practices)
-
----
-
-### Pitfall 14: No Logging/Monitoring in Production
-
-**What goes wrong:**
-Application crashes in production. No logs available to diagnose. "It worked on my machine."
-
-**Why it happens:**
-Console.log works locally. In Docker, logs go to container stdout. Without proper log aggregation, they're lost when container restarts.
-
-**Consequences:**
-- No insight into production issues
-- Can't debug sync failures
-- No audit trail for data changes
-- Performance problems invisible
-
-**Prevention:**
-
-**1. Use structured logging**
-```typescript
-import pino from 'pino';
-
-const logger = pino({
-  level: process.env.LOG_LEVEL || 'info',
-  transport: {
-    target: 'pino-pretty',
-    options: { colorize: true }
-  }
-});
-
-// Replace console.log
-logger.info({ source: 'TOGGL', count: entries.length }, 'Synced entries');
-logger.error({ err, source: 'TEMPO' }, 'Sync failed');
-```
-
-**2. Configure Docker logging**
-```yaml
-services:
-  backend:
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-```
-
-**3. Add log rotation**
-```bash
-# /etc/docker/daemon.json
-{
-  "log-driver": "json-file",
-  "log-opts": {
-    "max-size": "10m",
-    "max-file": "5"
-  }
+**Schema:**
+```prisma
+model MeterReading {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  imagePath String? // "2025/01/STROM-202501-abc123.jpg"
+  // NOT: imageData Bytes
 }
 ```
 
-**4. Monitor logs in production**
-```bash
-# View live logs
-docker compose logs -f backend
+**Detection:**
+- Database file size growing >100MB for single user
+- Slow query performance
+- Backup duration increases
+- Docker storage warnings
+- `docker system df` shows large volumes
 
-# Save logs to file
-docker compose logs backend > /var/log/timetracker-backend.log
+**Phase to address:** Phase 0 (Architecture) - Wrong from day one = expensive migration
+
+**Sources:**
+- [PostgreSQL: BinaryFilesInDB](https://wiki.postgresql.org/wiki/BinaryFilesInDB) - Official guidance against storing large files
+- [Sling Academy: PostgreSQL image storage](https://www.slingacademy.com/article/postgresql-how-to-store-images-in-database-and-why-you-shouldnt/) - Performance implications
+- [Medium: Optimizing Image Storage in PostgreSQL](https://medium.com/@ajaymaurya73130/optimizing-image-storage-in-postgresql-tips-for-performance-scalability-fd4d575a6624) - Best practices
+- [Maxim Orlov: Why Storing Files in Database Is Bad Practice](https://maximorlov.com/why-storing-files-database-bad-practice/)
+
+---
+
+### 4. Excel Date Parsing Locale/Format Chaos
+
+**What goes wrong:** User's historical Excel has German date formats (dd.MM.yyyy), mixed with ISO dates from exports, some cells formatted as text. Import succeeds but creates data 6 months off (month/day swap), or rejects 80% of rows.
+
+**Why it happens:**
+- Excel stores dates as numbers (days since 1900-01-01) but displays per locale
+- German system shows "31.12.2025" but exports as "12/31/2025" or "2025-12-31"
+- CSV export depends on Excel's language settings
+- Text-formatted dates don't parse as dates
+- Timezone not stored (assumes UTC, but user means local)
+- User's historical data has inconsistent formatting across years
+
+**Consequences:**
+- June reading imported as December
+- All historical data off by 6 months
+- Cost calculations wrong for entire history
+- User doesn't notice until comparing charts to utility bills
+- Year-over-year comparisons completely wrong
+
+**Prevention:**
+
+```typescript
+import { parse, isValid, parseISO } from 'date-fns';
+import { utcToZonedTime, zonedTimeToUtc } from 'date-fns-tz';
+
+const GERMAN_TIMEZONE = 'Europe/Berlin';
+
+// Try multiple date formats
+const DATE_FORMATS = [
+  'dd.MM.yyyy',      // German: 31.12.2025
+  'yyyy-MM-dd',      // ISO: 2025-12-31
+  'MM/dd/yyyy',      // US: 12/31/2025
+  'dd/MM/yyyy',      // EU: 31/12/2025
+  'd.M.yyyy',        // German without leading zero: 1.1.2025
+  'dd-MM-yyyy',      // Alternative: 31-12-2025
+];
+
+function parseExcelDate(value: string | number, userTimezone: string = GERMAN_TIMEZONE): Date | null {
+  // Handle Excel numeric date (days since 1900-01-01)
+  if (typeof value === 'number') {
+    // Excel incorrectly thinks 1900 was a leap year
+    const excelEpoch = new Date(1899, 11, 30); // December 30, 1899
+    const date = new Date(excelEpoch.getTime() + value * 86400000);
+
+    // Convert to user's timezone
+    return zonedTimeToUtc(date, userTimezone);
+  }
+
+  // Handle string dates
+  const trimmed = value.trim();
+
+  // Try ISO format first (fastest)
+  try {
+    const isoDate = parseISO(trimmed);
+    if (isValid(isoDate)) {
+      return zonedTimeToUtc(isoDate, userTimezone);
+    }
+  } catch {}
+
+  // Try each format
+  for (const format of DATE_FORMATS) {
+    try {
+      const parsed = parse(trimmed, format, new Date());
+      if (isValid(parsed)) {
+        return zonedTimeToUtc(parsed, userTimezone);
+      }
+    } catch {}
+  }
+
+  return null; // Could not parse
+}
+
+// Excel import with validation preview
+interface ExcelImportRow {
+  date: string;
+  reading: string | number;
+  notes?: string;
+}
+
+app.post('/api/meters/import/preview', async (req, res) => {
+  const { file, meterType } = req.body;
+
+  // Parse first 10 rows for preview
+  const rows = await parseExcelFile(file);
+  const preview = rows.slice(0, 10);
+
+  const parsed = preview.map((row, index) => {
+    const date = parseExcelDate(row.date);
+    const reading = parseFloat(String(row.reading).replace(',', '.'));
+
+    return {
+      rowNumber: index + 2, // Excel row (1-indexed + header)
+      original: row,
+      parsed: {
+        date: date?.toISOString(),
+        reading,
+      },
+      errors: [
+        ...(!date ? ['Could not parse date'] : []),
+        ...(isNaN(reading) ? ['Could not parse reading'] : []),
+      ]
+    };
+  });
+
+  const errorCount = parsed.filter(p => p.errors.length > 0).length;
+
+  return res.send({
+    preview: parsed,
+    totalRows: rows.length,
+    errorCount,
+    estimatedErrorRate: (errorCount / preview.length) * 100,
+    recommendation: errorCount > 0
+      ? 'Some rows have errors. Please fix date format in Excel and re-upload.'
+      : 'All preview rows look good. Ready to import.',
+  });
+});
+
+// Full import with proper error handling
+app.post('/api/meters/import', async (req, res) => {
+  const { file, meterType } = req.body;
+  const rows = await parseExcelFile(file);
+
+  const results = {
+    imported: 0,
+    skipped: 0,
+    errors: [] as string[],
+  };
+
+  for (const [index, row] of rows.entries()) {
+    try {
+      const date = parseExcelDate(row.date);
+      if (!date) {
+        results.errors.push(`Row ${index + 2}: Could not parse date "${row.date}"`);
+        results.skipped++;
+        continue;
+      }
+
+      const reading = parseFloat(String(row.reading).replace(',', '.'));
+      if (isNaN(reading)) {
+        results.errors.push(`Row ${index + 2}: Could not parse reading "${row.reading}"`);
+        results.skipped++;
+        continue;
+      }
+
+      // Validate against previous reading
+      await validateMeterReading(meterType, date, reading);
+
+      // Calculate consumption
+      const previousReading = await prisma.meterReading.findFirst({
+        where: { meterType, readingDate: { lt: date } },
+        orderBy: { readingDate: 'desc' }
+      });
+
+      const consumption = previousReading
+        ? reading - previousReading.reading
+        : null;
+
+      await prisma.meterReading.create({
+        data: {
+          meterType,
+          readingDate: date,
+          reading,
+          consumption,
+          source: 'EXCEL_IMPORT',
+          notes: row.notes,
+          verified: false, // Require user verification
+        }
+      });
+
+      results.imported++;
+    } catch (error) {
+      results.errors.push(`Row ${index + 2}: ${error.message}`);
+      results.skipped++;
+    }
+  }
+
+  return res.send(results);
+});
 ```
 
 **Detection:**
-- Stop and start container, check if logs persist
-- Trigger error, verify logged
+- Dates imported 6 months offset
+- Winter/summer consumption reversed
+- Validation rejects most rows
+- User reports "wrong months"
+- Charts don't match utility bills
 
-**Confidence:** HIGH (Docker logging best practices)
+**Phase to address:** Phase 1 (Excel Import) - Test with real user data before shipping
 
----
-
-## Phase-Specific Warnings
-
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| **Authentication Implementation** | Session fixation, no timeout, cookies in localStorage | Use fastify-session with secure config, regenerate session on login, HttpOnly cookies |
-| **Docker Deployment** | Secrets in environment variables, exposed ports | Use Docker Secrets, internal networks only |
-| **PostgreSQL Migration** | DateTime loses timezone, boolean 0/1 breaks | Use @db.Timestamptz(6), test with pgloader |
-| **Multi-source Sync** | Race conditions in upsert, duplicate entries across sources | Add mutex locking or retry logic, implement duplicate detection |
-| **API Integration** | Toggl rate limiting (30 req/hr), no backoff | Cache aggressively, implement exponential backoff, check rate limit headers |
-| **Production Monitoring** | No health checks, logs lost on restart | Add health check endpoints, configure Docker logging driver |
+**Sources:**
+- [Exceljet: Convert UTC timestamp](https://exceljet.net/formulas/convert-utc-timestamp-to-excel-datetime) - Excel date representation
+- [XlsxWriter: Dates and Times](https://xlsxwriter.readthedocs.io/working_with_dates_and_time.html) - Timezone handling
+- [ExtendOffice: Convert date time to timezone](https://www.extendoffice.com/documents/excel/3609-excel-convert-date-to-timezone.html) - Locale issues
+- [Flatfile: Top Excel import errors](https://flatfile.com/blog/the-top-excel-import-errors-and-how-to-fix-them/)
 
 ---
 
-## Quick Reference Checklist
+### 5. Recharts Performance Cliff with Multi-Year Data
 
-Before deploying to production:
+**What goes wrong:** Chart with 8 years × 12 months × 3 meters = 288 data points renders fine. Add 7 chart types × 288 points = 2016 DOM elements. Page freezes for 3+ seconds on every filter change. User perceives app as "broken."
 
-**Authentication:**
-- [ ] Session validation on every protected route
-- [ ] Session regeneration after login
-- [ ] Secure cookie configuration (HttpOnly, Secure, SameSite)
-- [ ] Idle and absolute timeout implemented
-- [ ] Server-side session destruction on logout
+**Why it happens:**
+- Recharts re-renders all charts on any state change
+- No memoization of chart configurations
+- React Context re-renders all consumers on meter selection change
+- Each chart calculates aggregations on every render
+- DOM manipulation for 2000+ SVG elements is slow
+- Existing app uses Context for theme state, extending pattern for meter data
 
-**Docker:**
-- [ ] Secrets in `/run/secrets/*`, not environment variables
-- [ ] Database ports not exposed to host (no `ports:` in db service)
-- [ ] Health checks configured for all services
-- [ ] UFW/Hetzner firewall configured
-- [ ] Only ports 22, 80, 443 open to public
+**Consequences:**
+- Unusable dashboard (3+ second lag on every interaction)
+- User frustration leads to abandonment
+- Mobile devices worse (10+ seconds)
+- Browser tab crashes on older hardware
+- Negative perception of entire app
 
-**Database:**
-- [ ] PostgreSQL uses TIMESTAMPTZ for datetime fields
-- [ ] Prisma migration tested with real SQLite data
-- [ ] Date range queries tested across DST boundaries
-- [ ] Upsert collision handling implemented (retry or mutex)
+**Prevention:**
 
-**API Integration:**
-- [ ] Rate limit headers monitored (x-toggl-quota-remaining)
-- [ ] Exponential backoff for 429 responses
-- [ ] Cache configured with reasonable TTL (1+ hours)
-- [ ] Sync operations locked per source (no concurrent syncs)
+```typescript
+// 1. Memoize chart data computation
+import { useMemo } from 'react';
 
-**Data Quality:**
-- [ ] Duplicate detection across sources implemented
-- [ ] Timezone handling tested (DST transitions)
-- [ ] Pagination added to entry lists
-- [ ] Database indexes on `date` and `[source, externalId]`
+function MeterCharts({ readings, meterType, dateRange }: Props) {
+  // Expensive aggregation - only recalculate when dependencies change
+  const chartData = useMemo(() => {
+    return aggregateByMonth(readings, meterType);
+  }, [readings, meterType]); // NOT on every render
 
-**Observability:**
-- [ ] Health check endpoint returns DB connectivity status
-- [ ] Structured logging (pino or similar)
-- [ ] Docker log rotation configured
-- [ ] Cache files in .gitignore
+  // Memoize chart configuration
+  const chartConfig = useMemo(() => ({
+    data: chartData,
+    xAxis: { dataKey: 'month', type: 'category' },
+    yAxis: { domain: [0, 'auto'] },
+    margin: { top: 5, right: 30, left: 20, bottom: 5 },
+  }), [chartData]);
+
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <LineChart {...chartConfig}>
+        <XAxis dataKey="month" />
+        <YAxis />
+        <Line type="monotone" dataKey="consumption" stroke="#8884d8" />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
+// 2. Use Zustand instead of Context for filter state
+// Prevents re-rendering all charts when one filter changes
+import create from 'zustand';
+
+interface MeterFilterState {
+  selectedMeter: string;
+  dateRange: [Date, Date];
+  setMeter: (meter: string) => void;
+  setDateRange: (range: [Date, Date]) => void;
+}
+
+const useMeterStore = create<MeterFilterState>((set) => ({
+  selectedMeter: 'STROM',
+  dateRange: [
+    new Date(new Date().getFullYear(), 0, 1), // Jan 1 this year
+    new Date()
+  ],
+  setMeter: (meter) => set({ selectedMeter: meter }),
+  setDateRange: (range) => set({ dateRange: range }),
+}));
+
+// In components - only re-renders when specific state changes
+function YearOverYearChart() {
+  const selectedMeter = useMeterStore(state => state.selectedMeter);
+  // Component only re-renders when selectedMeter changes
+  // NOT when dateRange changes
+}
+
+// 3. Lazy load chart types (code splitting)
+import { lazy, Suspense } from 'react';
+
+const YearOverYearChart = lazy(() => import('./charts/YearOverYear'));
+const TrendChart = lazy(() => import('./charts/Trend'));
+const HeatmapChart = lazy(() => import('./charts/Heatmap'));
+
+function MeterDashboard() {
+  const [activeChart, setActiveChart] = useState('year-over-year');
+
+  return (
+    <div>
+      <ChartSelector active={activeChart} onChange={setActiveChart} />
+
+      <Suspense fallback={<ChartSkeleton />}>
+        {activeChart === 'year-over-year' && <YearOverYearChart />}
+        {activeChart === 'trend' && <TrendChart />}
+        {activeChart === 'heatmap' && <HeatmapChart />}
+      </Suspense>
+    </div>
+  );
+}
+
+// 4. Aggregate data server-side for large ranges
+app.get('/api/meters/aggregated', async (req, res) => {
+  const { meterType, startDate, endDate, granularity } = req.query;
+
+  // Don't send 2000 daily readings, send 96 monthly aggregates
+  const aggregated = await prisma.$queryRaw`
+    SELECT
+      DATE_TRUNC(${granularity}, "readingDate") as period,
+      SUM(consumption) as total_consumption,
+      AVG(consumption) as avg_consumption,
+      COUNT(*) as reading_count
+    FROM "MeterReading"
+    WHERE "meterType" = ${meterType}
+      AND "readingDate" BETWEEN ${startDate} AND ${endDate}
+    GROUP BY period
+    ORDER BY period
+  `;
+
+  return res.send(aggregated);
+});
+
+// 5. Use React.memo to prevent unnecessary component renders
+import React from 'react';
+
+const MeterChart = React.memo(({ data, config }: Props) => {
+  console.log('Chart rendering'); // Should only log when data/config changes
+
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <LineChart data={data} {...config}>
+        {/* ... */}
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison - only re-render if data actually changed
+  return (
+    prevProps.data === nextProps.data &&
+    prevProps.config === nextProps.config
+  );
+});
+```
+
+**Detection:**
+- React DevTools Profiler shows >100ms render times
+- Page unresponsive during filter changes
+- Browser console warnings about slow renders
+- High CPU usage in profiler
+- Chrome DevTools Performance tab shows long tasks
+
+**Phase to address:** Phase 2 (Chart Implementation) - Build performance testing from start
+
+**Sources:**
+- [Recharts GitHub: Large datasets cause performance issues](https://github.com/recharts/recharts/issues/1465)
+- [Recharts Performance Guide](https://recharts.github.io/guide/performance/)
+- [LogRocket: React chart libraries 2025](https://blog.logrocket.com/best-react-chart-libraries-2025/)
+- [State Management in 2026](https://thelinuxcode.com/state-management-in-react-2026-hooks-context-api-and-redux-in-practice/)
+- [Refine: Create charts using Recharts](https://refine.dev/blog/recharts/)
 
 ---
 
-## Additional Resources
+## Technical Debt Patterns
 
-**Official Documentation:**
-- [Docker Compose Secrets](https://docs.docker.com/compose/how-tos/use-secrets/)
-- [Prisma PostgreSQL Guide](https://www.prisma.io/docs/orm/overview/databases/postgresql)
-- [OWASP Session Management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html)
-- [Toggl API Rate Limits](https://support.toggl.com/api-webhook-limits)
+Shortcuts that create future pain.
 
-**Community Resources:**
-- [Prisma Upsert Race Condition Discussion](https://github.com/prisma/prisma/issues/3242)
-- [Hetzner Docker Security Tutorial](https://community.hetzner.com/tutorials/debian-docker-install-dualstack-firewall/)
-- [SQLite to PostgreSQL Migration Guide](https://render.com/articles/how-to-migrate-from-sqlite-to-postgresql)
+| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
+|----------|-------------------|----------------|-----------------|
+| Skip image preprocessing before OCR | Ship OCR feature faster | OCR accuracy 55% instead of 85%, user corrections, abandonment | Never - preprocessing is table stakes |
+| Store consumption instead of readings | Simpler schema | Cannot recalculate, cannot detect reading errors, data integrity impossible | Never - readings are source of truth |
+| No database-level validation | Faster development | Bad data enters system, corrupts calculations, requires data cleanup scripts | Never - validation is foundational |
+| Use React Context for chart filters | Simple state management | All charts re-render on filter change, 3+ second lag | MVP only, refactor by Phase 2 |
+| Tesseract default models | No training data needed | 55% accuracy, requires manual correction | Never - need tessdata_ssd |
+| Store images in PostgreSQL | No file storage to configure | Database bloat, slow backups, scaling issues | Never - file system is correct choice |
+| Single date format in Excel parser | Works for your test data | Import fails for real user data with German formats | Never - German users need dd.MM.yyyy |
+| Client-side consumption calculation | No backend logic needed | Inconsistent calculations, cannot change formula | MVP only, move to database triggers |
+| No anomaly detection thresholds | Ship feature faster | 50% false positives, user ignores anomalies | MVP acceptable if marked "experimental" |
+| Manual chart data aggregation | Full control over logic | Re-renders on every state change, performance cliff | Acceptable if memoized properly |
+| Merge meter features into existing routes | Faster to ship | REST API becomes cluttered, hard to version | Acceptable for MVP, refactor later |
+| No undo for Excel import | Simpler implementation | Wrong file imported, must manually delete 300+ rows | Never - undo is critical for bulk operations |
+| Client-side image resize | No server CPU usage | Large uploads on slow connections, browser memory issues | Acceptable for MVP, optimize later |
+
+---
+
+## Integration Gotchas
+
+Mistakes when adding meter features to existing time tracking system.
+
+| Integration Point | Common Mistake | Correct Approach |
+|-------------------|---------------|------------------|
+| **Database Schema** | Add meter tables without migration strategy | Use Prisma baselining, add tables without touching existing TimeEntry model |
+| **Authentication** | Create separate auth for meter features | Reuse existing JWT auth from time tracking |
+| **Fastify Routes** | Add /meters routes without rate limiting | Apply existing @fastify/rate-limit (already in project), especially for image upload |
+| **Frontend Layout** | Build separate meter dashboard | Extend existing dashboard with tabs/sections, reuse ThemeToggle, Toast, auth context |
+| **Date Handling** | Mix Date and DateTime types | Use existing date-fns + date-fns-tz pattern from time tracking (already in package.json) |
+| **State Management** | Introduce Redux for meter state | Use existing React patterns (useState/Context from useTheme.tsx), only add Zustand if performance requires |
+| **Styling** | Add new CSS framework for charts | Use existing Tailwind classes, extend tailwind.config.js |
+| **API Error Handling** | Different error format for meter endpoints | Match existing error format from time tracking API |
+| **Docker Compose** | Separate database for meter data | Use existing PostgreSQL container, add volume mount for images |
+| **Image Upload** | New multipart handler | Use existing @fastify/multipart (already in package.json v8.3.0), configure limits |
+| **Validation** | Introduce Yup for meter validation | Use existing Zod (fastify-type-provider-zod already in project v2.1.0) |
+| **Toast Notifications** | Different notification system | Use existing useToast.tsx hook from time tracking |
+| **Component Library** | Import UI library for meters | Reuse existing components (CustomSelect.tsx, etc.) |
+| **Navigation** | Add separate nav for meters | Extend existing App.tsx routing pattern |
+
+---
+
+## Performance Traps
+
+Patterns that seem fine initially but break at scale.
+
+| Trap | Symptoms | Prevention | When It Breaks |
+|------|----------|------------|----------------|
+| **Loading all photos on dashboard** | Page load 10+ seconds, browser memory spike | Load photo thumbnails only, full size on click | >50 photos |
+| **Recalculating consumption on every render** | Lag on filter changes | Calculate in Prisma query or database trigger, not React component | >100 readings |
+| **No chart data pagination** | Page unresponsive | Virtual scrolling or server-side aggregation | >500 data points per chart |
+| **OCR processing on main thread** | UI frozen during processing | Use Web Workers or backend processing | Any OCR usage |
+| **No image size limit** | Slow uploads, storage explosion | Resize to 1080px before upload (client-side), reject >5MB | First 10MB upload |
+| **Synchronous Excel parsing** | Browser freeze on large files | Stream parsing with csv-parse (already in project v5.5.6) | Files >1000 rows |
+| **All chart types rendered simultaneously** | 3+ second initial load | Lazy load charts, render visible tab only | >3 chart types |
+| **No database indexes on meter_id + date** | Slow consumption queries | Add compound index `@@index([meterType, readingDate])` in Prisma schema | >1000 readings |
+| **Client-side anomaly detection** | Page freeze on large datasets | Calculate anomalies server-side, cache results | >200 data points |
+| **No request timeout on OCR** | Hung requests, memory leak | Set 30s timeout for OCR processing | First complex image |
+| **Storing full-res images (5MB+)** | Storage fills quickly | Resize to 1080px max width, compress to 85% quality | After 50 photos |
+| **No caching of aggregated data** | Same query runs 100x/day | Cache monthly aggregates with 1-hour TTL | >10 users (future) |
+| **Fetching all readings on page load** | Slow initial load | Default to last 12 months, lazy load older data | >500 readings |
+
+---
+
+## Security Mistakes
+
+Security vulnerabilities specific to meter tracking features.
+
+| Mistake | Risk | Prevention |
+|---------|------|------------|
+| **No file type validation on image upload** | Upload executable as .jpg, RCE vulnerability | Validate MIME type + file signature (magic bytes), not just extension |
+| **Store meter images world-readable** | Privacy violation, anyone can see user's meter/address | Authenticate image requests, serve through API with JWT check |
+| **No rate limiting on OCR endpoint** | DoS attack, resource exhaustion | Limit to 10 requests/minute per user (use existing @fastify/rate-limit) |
+| **Path traversal in image storage** | Upload overwrites system files | Sanitize filenames, use UUIDs, never trust user input |
+| **No CSRF protection on Excel upload** | Attacker imports malicious data | Use existing @fastify/secure-session CSRF tokens |
+| **Expose image filesystem paths in API** | Information disclosure | Return image IDs, serve through /api/images/:id |
+| **No max file size on Excel import** | Memory exhaustion, DoS | Limit to 10MB, stream parse (csv-parse supports streaming) |
+| **SQL injection in consumption query** | Database compromise | Use Prisma (already in project, parameterized queries by default) |
+| **No content-type validation** | XSS via SVG upload | Validate Content-Type: image/jpeg or image/png only |
+| **Storing cost per kWh without audit trail** | User disputes incorrect calculations | Log all cost configuration changes with timestamp + old/new values |
+| **No file cleanup on reading deletion** | Orphaned files, storage leak | Delete image file when reading deleted (database trigger or cascade) |
+| **OCR processing user-uploaded script** | Code injection | Sanitize all OCR output, never eval() or execute extracted text |
+
+---
+
+## UX Pitfalls
+
+User experience mistakes that cause frustration.
+
+| Pitfall | User Impact | Better Approach |
+|---------|-------------|-----------------|
+| **OCR extracts value, no confirmation step** | Wrong value saved, user discovers later in charts | Always show extracted value in editable field before save |
+| **Bulk Excel import with no preview** | Import 300 rows, realize data is wrong, must delete all | Show first 10 rows preview with detected format before import |
+| **No loading indicator during OCR** | User thinks app crashed, clicks button repeatedly | Show progress: "Processing image... 3s" with cancel option |
+| **7 chart types visible simultaneously** | Overwhelming, slow performance | Start with 2 most useful charts, others behind "More charts" expansion |
+| **Consumption shown to 10 decimal places** | Noise, user can't parse | Round to 1 decimal (123.4 kWh, not 123.4567891234) |
+| **Anomaly detection marks winter heating as anomaly** | False positive, user loses trust | Seasonal baseline, mark anomalies >2σ from monthly average, not annual |
+| **No undo for Excel import** | Wrong file imported, must manually delete 300+ rows | Add "Undo last import" button (soft delete with import_batch_id) |
+| **Image upload fails, no guidance** | "Upload failed", user doesn't know why | "Image too large (8MB). Max 5MB. Try reducing resolution." |
+| **Manual reading input requires image** | User wants to enter reading without photo | Make image optional, show warning "No photo for verification" |
+| **Chart shows consumption, but user sees readings on meter** | Confusion about cumulative vs delta | Show both: "Reading: 12,345 kWh | Consumption: +234 kWh" |
+| **No mobile-optimized photo capture** | User uploads 20MB raw photo, slow upload | Use `<input accept="image/*" capture="environment">` with client-side resize |
+| **Date picker defaults to today for historical import** | User must scroll back 8 years for every row | Remember last entered date, increment by 1 month for next row |
+| **No visual feedback on monotonic increase violation** | User confused why save failed | "Reading 12,340 kWh is less than previous reading 12,456 kWh on 2025-12-01" |
+| **Forecast chart shows 10-year prediction** | Meaningless, user ignores | Limit forecast to 6 months, show confidence interval |
+| **Cost overlay assumes fixed rate** | Wrong for users with time-of-use rates | Support rate tiers (day/night) or flat rate with change history |
+| **Charts default to all meters combined** | Mixed units (kWh + m³ makes no sense) | Default to single meter, user selects which |
+| **No way to delete incorrect OCR attempt** | Gallery cluttered with failed attempts | Allow deleting readings + images, with confirmation |
+
+---
+
+## "Looks Done But Isn't" Checklist
+
+Features that appear complete but miss critical requirements.
+
+- [ ] **OCR extracts numbers** ✓ → But does it handle reflections on meter glass? Rotated images? Partial occlusion?
+- [ ] **Excel import works** ✓ → But does it handle German date formats? Missing months? Text-formatted cells? UTF-8 BOM?
+- [ ] **Charts render data** ✓ → But do they handle missing months? Single data point? 0 consumption?
+- [ ] **Consumption calculated** ✓ → But is it database-level (trigger) or client-side? Can it be recalculated?
+- [ ] **Anomaly detection implemented** ✓ → But does it account for seasonality? Adjustable thresholds? False positive rate acceptable?
+- [ ] **Image upload working** ✓ → But is there size limit? Format validation? Malicious file handling? Filesystem cleanup on delete?
+- [ ] **Meter readings stored** ✓ → But is there monotonic increase validation? Duplicate detection? Timezone handling?
+- [ ] **Cost overlay chart** ✓ → But does it use correct date for rate changes? Handle rate increasing mid-month?
+- [ ] **Year-over-year comparison** ✓ → But does it align by month (Jan-Jan)? Handle leap years? Missing data?
+- [ ] **Manual entry form** ✓ → But does it validate against previous reading? Show last reading for reference? Confirm unusual values?
+- [ ] **Database migration** ✓ → But is it reversible? Tested on production-size data? Handles existing TimeEntry rows?
+- [ ] **Historical data backfill** ✓ → But is there data validation? Duplicate checking? Audit trail? Bulk undo?
+- [ ] **Heatmap shows usage patterns** ✓ → But does it handle single meter? All meters? Missing months show as gaps or 0?
+- [ ] **Mobile responsive** ✓ → But can user take photo on phone? Does OCR work on device? Charts readable on small screen?
+- [ ] **Error messages shown** ✓ → But are they actionable? Localized (German user expects German)? Show recovery steps?
+- [ ] **Authentication reused from time tracking** ✓ → But do meter API endpoints have auth middleware? Image serving authenticated?
+- [ ] **Images served** ✓ → But through authenticated endpoint? With caching headers? Thumbnails for gallery?
+- [ ] **Consumption query optimized** ✓ → But with database index? Paginated? Date range filter?
+
+---
+
+## Pitfall-to-Phase Mapping
+
+When each pitfall should be addressed to prevent compounding issues.
+
+| Pitfall Category | Prevention Phase | Verification Method |
+|------------------|------------------|---------------------|
+| **OCR accuracy** | Phase 1 (OCR MVP) | Test with 50 real phone photos, measure accuracy %, user correction rate |
+| **Meter reading validation** | Phase 0 (Schema) | Write test: insert reading < previous → expect error |
+| **Image storage architecture** | Phase 0 (Architecture) | Load test: upload 100 images, measure database size growth |
+| **Excel date parsing** | Phase 1 (Import) | Test with German Excel, US Excel, text-formatted dates, ISO dates |
+| **Chart performance** | Phase 2 (Charts) | Load test: render 288 data points × 7 charts, measure render time < 500ms |
+| **State management performance** | Phase 2 (Charts) | Profile React DevTools, check re-render count on filter change |
+| **Database constraints** | Phase 0 (Schema) | Create SQL function + trigger for monotonic increase before any data inserted |
+| **Image file validation** | Phase 1 (Upload) | Pen test: try uploading .exe as .jpg, verify rejection |
+| **Rate limiting OCR** | Phase 1 (OCR) | Stress test: 20 concurrent OCR requests, verify rate limit enforced |
+| **Client-side image resize** | Phase 1 (Upload) | Test: upload 20MB photo, verify resize to <2MB before upload |
+| **Date-fns timezone handling** | Phase 1 (Import) | Test: import "31.12.2025", verify stored as 2025-12-31 in Europe/Berlin |
+| **Consumption calculation location** | Phase 0 (Architecture) | Decide: database trigger vs. application logic (recommend trigger) |
+| **Prisma migration strategy** | Phase 0 (Schema) | Test: add meter tables to existing DB, verify TimeEntry untouched |
+| **Anomaly detection baseline** | Phase 3 (Anomalies) | Test with 2 years winter/summer data, verify seasonal baseline used |
+| **Excel import validation preview** | Phase 1 (Import) | User test: import wrong file, verify preview catches it |
+| **Integration with existing auth** | Phase 0 (Planning) | Verify: all /api/meters/* routes use existing requireAuth middleware |
+| **File storage volume mounts** | Phase 0 (Docker) | Test: restart container, verify images persist |
+| **Fastify multipart limits** | Phase 1 (Upload) | Test: upload 6MB file, verify rejected (5MB limit) |
 
 ---
 
 ## Confidence Assessment
 
-| Area | Confidence | Rationale |
-|------|------------|-----------|
-| Authentication | HIGH | Based on OWASP official guidance + 2025 CVE examples |
-| Docker Security | HIGH | Official Docker docs + Hetzner community tutorials |
-| PostgreSQL Migration | HIGH | Prisma official docs + community migration guides |
-| Race Conditions | HIGH | Confirmed Prisma GitHub issues with community workarounds |
-| Timezone Handling | MEDIUM | General best practices, not time-tracking specific |
-| Duplicate Detection | MEDIUM | Data reconciliation patterns, not time-tracking specific |
-| API Rate Limiting | HIGH | Official Toggl support docs (September 2025) |
-| UUID/ID Generation | MEDIUM | Standards exist (UUID v7), but overkill for single-user app |
+| Research Area | Confidence | Rationale |
+|---------------|-----------|-----------|
+| OCR accuracy challenges | HIGH | Multiple academic sources + GitHub projects document 55-63% accuracy for digital displays, custom training needed |
+| Meter reading data validation | HIGH | Home Assistant + industry meter data management docs provide clear validation patterns |
+| Image storage strategy | HIGH | Official PostgreSQL wiki + multiple technical sources agree: don't store large files in database |
+| Excel date parsing issues | HIGH | Extensive documentation of Excel date/timezone/locale problems from multiple sources |
+| Recharts performance issues | HIGH | Recharts GitHub issues document performance problems with large datasets, official guide confirms |
+| State management patterns | MEDIUM | Current 2026 sources confirm trends (React Query + Zustand/Jotai), but project-specific context needed |
+| Fastify multipart configuration | HIGH | Official @fastify/multipart documentation v8.3.0, package already in project |
+| Anomaly detection false positives | MEDIUM | General time series documentation, but German utility patterns need validation |
+| Security considerations | HIGH | Standard web security practices + file upload vulnerabilities well documented |
+| Integration with existing system | HIGH | Based on actual project codebase analysis (Prisma schema, package.json, component structure) |
+| German utility meter specifics | LOW | No Germany-specific meter documentation found, assuming standard EU practices |
+| OCR for German meters | LOW | Tesseract works for seven-segment displays, but German meter layouts not specifically tested |
 
 ---
 
-## Research Notes
+## Gaps and Open Questions
 
-**Sources Used:**
-- Official Docker documentation (compose, secrets, networking)
-- OWASP Security Cheat Sheets (session management, authentication)
-- Prisma ORM documentation (migrations, upsert behavior)
-- GitHub issues (Prisma race conditions, datetime bugs)
-- Toggl official support articles (2025 rate limit announcement)
-- Hetzner community tutorials (firewall, Docker deployment)
-- PostgreSQL migration guides (SQLite type conversions)
-- Time tracking domain articles (timezone handling, DST edge cases)
+**Areas needing further research:**
 
-**What Wasn't Found:**
-- Tempo API rate limiting documentation (only Toggl found)
-- Specific time-tracking duplicate detection algorithms
-- Production deployment guides for Fastify + Prisma + Docker + Hetzner (combined stack)
+1. **German Utility Meter Layouts**: Do German electricity/gas/water meters have standard display formats? Are there regulatory specifications?
 
-**Recommended Phase-Specific Research:**
-- Phase 2 (Authentication): Deep dive into fastify-session vs fastify-secure-session
-- Phase 3 (PostgreSQL): Load testing with production data volume
-- Phase 4 (Docker): Hetzner-specific networking configuration
-- Phase 5 (Duplicate Detection): Interview users about which source is "canonical"
+2. **Historical Data Quality**: User's Excel file from 2018-2025 - what's the actual data quality? Are there gaps? Inconsistent formatting?
+
+3. **Seasonal Baseline for Germany**: What's typical winter/summer consumption variation for German households? (For anomaly detection)
+
+4. **Mobile OCR Performance**: Does Tesseract.js run acceptably fast on mobile browsers? Or should OCR be server-side only?
+
+5. **Cost Rate Changes**: Do German utilities change rates mid-month? How to handle rate tiers (Grundpreis + Arbeitspreis)?
+
+6. **Chart Priority**: Which of the 7 chart types are actually most valuable to user? Should build 2-3 first, not all 7.
+
+7. **Integration Timing**: Should meter features be in existing dashboard or separate section? User flow unclear.
+
+**Recommended validation before Phase 1:**
+
+- [ ] Get sample of user's actual Excel data
+- [ ] Take 10 phone photos of actual German meters (electricity, gas, water)
+- [ ] Test Tesseract accuracy on real German meter photos
+- [ ] Clarify which chart types are P0 vs. nice-to-have
+- [ ] Determine if cost tracking is MVP or Phase 2
+
+---
+
+## Sources
+
+### OCR & Image Processing
+- [MDPI: Smart OCR Application for Meter Reading](https://www.mdpi.com/2673-4591/20/1/25)
+- [GitHub: Meter Reading with OCR](https://github.com/arnavdutta/Meter-Reading)
+- [Research: State of OCR in 2026](https://research.aimultiple.com/ocr-technology/)
+- [Medium: Digital meter reading using CV & ML](https://medium.com/@oviyum/digital-meter-reading-using-cv-ml-53b71f25ed91)
+- [GitHub: tessdata_ssd - Seven Segment Display training](https://github.com/Shreeshrii/tessdata_ssd)
+- [GitHub: LCD-OCR with Tesseract](https://github.com/DevashishPrasad/LCD-OCR)
+- [Toolify: Precise OCR Models for 7-Segment Displays](https://www.toolify.ai/ai-news/create-precise-ocr-models-for-7segment-displays-using-tesseract-2020564)
+- [Unstract: Tesseract OCR Guide 2026](https://unstract.com/blog/guide-to-optical-character-recognition-with-tesseract-ocr/)
+- [Klippa: Tesseract OCR in 2026](https://www.klippa.com/en/blog/information/tesseract-ocr/)
+- [Research: OCR Accuracy Benchmark 2026](https://research.aimultiple.com/ocr-accuracy/)
+- [Cloudinary: Pre-upload image processing](https://cloudinary.com/blog/giving_your_mobile_app_a_boost_part_1_pre_upload_image_processing)
+
+### Data Validation & Integrity
+- [Home Assistant: Utility Meter](https://www.home-assistant.io/integrations/utility_meter/)
+- [Itron: Reading validation](https://docs.itrontotal.com/IEEMDM/Content/Topics/252929.htm)
+- [Itron: Interval validation rules](https://docs.itrontotal.com/IEEMDM/Content/Topics/252711.htm)
+- [PNNL: Meter Data Analysis](https://www.pnnl.gov/main/publications/external/technical_reports/PNNL-24331.pdf)
+- [Blicker: Automatic Meter Reading](https://www.blicker.ai/news/improving-your-utility-operations-with-automatic-meter-reading-solutions)
+- [AIM Multiple: Meter Data Management System](https://research.aimultiple.com/meter-data-management/)
+- [Scientific Data: Real-World Energy Management Dataset](https://www.nature.com/articles/s41597-025-05186-3)
+
+### Database & Storage
+- [PostgreSQL: BinaryFilesInDB](https://wiki.postgresql.org/wiki/BinaryFilesInDB)
+- [Sling Academy: PostgreSQL image storage](https://www.slingacademy.com/article/postgresql-how-to-store-images-in-database-and-why-you-shouldnt/)
+- [Medium: Optimizing Image Storage in PostgreSQL](https://medium.com/@ajaymaurya73130/optimizing-image-storage-in-postgresql-tips-for-performance-scalability-fd4d575a6624)
+- [Maxim Orlov: Why Storing Files in Database Is Bad Practice](https://maximorlov.com/why-storing-files-database-bad-practice/)
+- [PostgreSQL: Database versus filesystem for storing images](https://www.postgresql.org/message-id/a595de7a0612311316m67e99669m2cd2d53d1ce94d90@mail.gmail.com)
+- [Codegenes: Storing Images - Database vs Filesystem](https://www.codegenes.net/blog/storing-images-in-a-database-versus-a-filesystem/)
+- [Prisma: Getting started with Migrate](https://www.prisma.io/docs/orm/prisma-migrate/getting-started)
+- [Prisma: Adding Migrate to existing project](https://www.prisma.io/docs/guides/migrate/developing-with-prisma-migrate/add-prisma-migrate-to-a-project)
+- [Wasp: Database Migrations in Prisma](https://wasp.sh/blog/2025/04/02/an-introduction-to-database-migrations)
+- [LogRocket: Database schema migration with Prisma](https://blog.logrocket.com/effortless-database-schema-migration-prisma/)
+
+### Excel Import & Date Parsing
+- [Flatfile: Top Excel import errors](https://flatfile.com/blog/the-top-excel-import-errors-and-how-to-fix-them/)
+- [Dromo: Common data import errors](https://dromo.io/blog/common-data-import-errors-and-how-to-fix-them)
+- [Ingestro: CSV file import errors](https://ingestro.com/blog/5-csv-file-import-errors-and-how-to-fix-them-quickly)
+- [Flatfile: CSV Import Errors](https://flatfile.com/blog/top-6-csv-import-errors-and-how-to-fix-them/)
+- [OneSchema: Advanced CSV import features](https://www.oneschema.co/blog/advanced-csv-import-features)
+- [Exceljet: Convert UTC timestamp](https://exceljet.net/formulas/convert-utc-timestamp-to-excel-datetime)
+- [XlsxWriter: Dates and Times](https://xlsxwriter.readthedocs.io/working_with_dates_and_time.html)
+- [ExtendOffice: Convert date to timezone](https://www.extendoffice.com/documents/excel/3609-excel-convert-date-to-timezone.html)
+- [Microsoft: Excel Online date/time displays wrong](https://answers.microsoft.com/en-us/msoffice/forum/all/excel-online-datetime-displays-wrong-despite/cd1c8401-6fdd-4ddb-98c3-6ef0c7e76d6f)
+- [Office Watch: Local time zone offset in Excel](https://office-watch.com/2023/time-zone-offset-excel/)
+
+### Chart Performance
+- [Recharts: Performance Guide](https://recharts.github.io/guide/performance/)
+- [Recharts GitHub: Large datasets performance issues](https://github.com/recharts/recharts/issues/1465)
+- [Recharts GitHub: Slow with large data](https://github.com/recharts/recharts/issues/1146)
+- [Recharts GitHub: Downsample large data set](https://github.com/recharts/recharts/issues/1356)
+- [Recharts GitHub: Large dataset on scatter plots](https://github.com/recharts/recharts/discussions/3181)
+- [Refine: Create charts using Recharts](https://refine.dev/blog/recharts/)
+- [Chart.js: Performance Documentation](https://www.chartjs.org/docs/latest/general/performance.html)
+- [LogRocket: Best React chart libraries 2025](https://blog.logrocket.com/best-react-chart-libraries-2025/)
+- [Syncfusion: Top 5 React Chart Libraries 2026](https://www.syncfusion.com/blogs/post/top-5-react-chart-libraries)
+- [FusionCharts: Best React Chart Libraries 2026](https://www.fusioncharts.com/blog/what-are-the-6-best-react-chart-libraries/)
+
+### State Management & React Performance
+- [TheLinuxCode: State Management in React 2026](https://thelinuxcode.com/state-management-in-react-2026-hooks-context-api-and-redux-in-practice/)
+- [Nucamp: State Management in 2026](https://www.nucamp.co/blog/state-management-in-2026-redux-context-api-and-modern-patterns)
+- [Syncfusion: React State Management Tools 2026](https://www.syncfusion.com/blogs/post/react-state-management-libraries)
+- [Trio: Top React State Management Libraries 2026](https://trio.dev/7-top-react-state-management-libraries/)
+- [Netguru: React JS Trends in 2026](https://www.netguru.com/blog/react-js-trends)
+- [CodeScene: Technical debt in React](https://codescene.com/blog/codescene-prioritize-technical-debt-in-react/)
+- [Kickstand: Reducing technical debt in React](https://kickstand.work/blog/react/reducing-technical-debt-in-react-app/)
+- [Medium: Feature Creep and Technical Debt](https://medium.com/craft-academy/feature-creep-technical-debt-and-the-role-of-automated-testing-in-software-development-a99a6542114f)
+
+### Anomaly Detection
+- [Neptune.ai: Anomaly Detection in Time Series](https://neptune.ai/blog/anomaly-detection-in-time-series)
+- [VictoriaMetrics: Anomaly Detection Handbook](https://victoriametrics.com/blog/victoriametrics-anomaly-detection-handbook-chapter-1/)
+- [BlackBerry: Reduce false positives with time series predictions](https://blogs.blackberry.com/en/2024/06/reduce-false-positives-with-time-series-predictions)
+- [Anodot: Time Series Anomaly Detection](https://www.anodot.com/blog/closer-look-time-series-anomaly-detection/)
+- [PyCharm: Anomaly Detection in Time Series](https://blog.jetbrains.com/pycharm/2025/01/anomaly-detection-in-time-series/)
+- [GeeksforGeeks: Anomaly Detection in Time Series Data](https://www.geeksforgeeks.org/machine-learning/anomaly-detection-in-time-series-data/)
+- [Striim: Time series forecasting and anomaly detection](https://www.striim.com/docs/platform/en/time-series-forecasting-and-anomaly-detection.html)
+
+### UX & Mobile
+- [Whizzbridge: UI UX Best Practices 2026](https://www.whizzbridge.com/blog/ui-ux-best-practices-2025)
+- [UIDesignz: UI UX Design Best Practices 2026](https://uidesignz.com/blogs/ui-ux-design-best-practices)
+- [Userpilot: Mobile UX Design Guide](https://userpilot.com/blog/mobile-ux-design/)
+- [Thinkroom: Mobile UX best practices 2025](https://www.thinkroom.com/mobile-ux-best-practices/)
+- [Toptal: Mobile UX Design Best Practices](https://www.toptal.com/designers/ux/mobile-ux-design-best-practices)
+- [Netguru: Top 10 Mobile UX Best Practices](https://www.netguru.com/blog/mobile-ux-best-practices)
+- [UIDesignz: Mobile UI Design Best Practices 2026](https://uidesignz.com/blogs/mobile-ui-design-best-practices)
+- [Octet: UX Best Practices for 2026](https://octet.design/journal/ux-best-practices/)
+- [Imagify: How to Optimize Images for Mobile](https://imagify.io/blog/how-to-optimize-images-for-mobile/)
+- [BrowserStack: Strategies for Optimizing Images for Mobile](https://www.browserstack.com/guide/strategies-for-optimizing-images-for-mobile)
+
+### Data Backfilling
+- [Atlan: Backfilling Data Guide](https://atlan.com/backfilling-data-guide/)
+- [Metaplane: Backfilling Data Best Practices](https://www.metaplane.dev/blog/backfilling-data-in-2023)
+- [Medium: Backfilling Data Pipelines](https://medium.com/@andymadson/backfilling-data-pipelines-concepts-examples-and-best-practices-19f7a6b20c82)
+- [Acceldata: Why Backfilling Data Is Essential](https://www.acceldata.io/blog/why-backfilling-data-is-essential-for-reliable-analytics)
+- [Monte Carlo: Data Engineer's Guide To Backfilling](https://www.montecarlodata.com/blog-backfilling-data-guide/)
+- [Contentsquare: Engineering a Reliable Data Backfill Solution](https://engineering.contentsquare.com/2023/engineering-a-reliable-data-backfill-solution/)
+- [CelerData: Data Backfill](https://celerdata.com/glossary/data-backfill)
+
+### Fastify
+- [GitHub: @fastify/multipart](https://github.com/fastify/fastify-multipart)
+- [npm: @fastify/multipart](https://www.npmjs.com/package/@fastify/multipart)
+- [Better Stack: File Uploads with Fastify](https://betterstack.com/community/guides/scaling-nodejs/fastify-file-uploads/)
+- [Snyk: Node.js file uploads with Fastify](https://snyk.io/blog/node-js-file-uploads-with-fastify/)
+- [GitHub: fastify-multer](https://github.com/fox1t/fastify-multer)
+
+### Technical Debt & Best Practices
+- [AltexSoft: Reducing Technical Debt](https://www.altexsoft.com/blog/technical-debt/)
+- [Frontend at Scale: A Normal Amount of Tech Debt](https://frontendatscale.com/issues/11/)
+- [DEV: Technical Debt Grows from "Just for Now"](https://dev.to/nyaomaru/technical-debt-grows-from-just-for-now-a-real-world-code-walkthrough-5997)
+- [TechDebtGuide: Types of Technical Debt](https://techdebtguide.com/types-of-technical-debt)
+
+---
+
+**END OF PITFALLS RESEARCH**

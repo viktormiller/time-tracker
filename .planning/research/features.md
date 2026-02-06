@@ -1,804 +1,348 @@
-# Time Tracking Dashboard Feature Implementation Research
+# Feature Research: Utility Meter Tracking
 
-**Project:** Time Tracker Dashboard
-**Researched:** 2026-01-19
-**Overall Confidence:** HIGH
+**Domain:** Household utility meter tracking (Electricity/Strom, Gas, Hot Water/Wasser Warm)
+**Researched:** 2026-02-06
+**Confidence:** MEDIUM
 
-## Executive Summary
-
-This research covers implementation patterns for four key feature areas in time tracking dashboards: core features, export functionality (CSV/PDF), theme switching (dark mode), and manual time entry UIs. The findings synthesize current best practices from successful time tracking applications (Toggl, Clockify, Harvest) and modern web development patterns for React/Node.js applications.
-
-**Key Recommendation:** The project is well-positioned with its existing stack (React + Tailwind + Fastify + Prisma). The research identifies specific libraries and patterns that integrate cleanly with the current architecture.
+Research based on ecosystem survey of utility tracking applications, German utility requirements, and mobile meter reading workflows. Core patterns are well-established; specific implementation details for OCR and anomaly detection require phase-specific research.
 
 ---
 
-## 1. Time Tracking Dashboard Features
+## Feature Landscape
 
-### Table Stakes Features (Must-Have)
+### Table Stakes (Users Expect These)
 
-Based on analysis of successful time tracking applications in 2026, users expect these core features:
+Features users expect in any utility tracking application. Missing these makes the product feel incomplete.
 
-| Feature | Why Expected | Complexity | Implementation Priority |
-|---------|--------------|------------|------------------------|
-| **Real-time timers** | Industry standard - start/stop tracking with single click | Medium | Existing (sync feature) |
-| **Manual time entry** | Users need to log forgotten hours or edit entries | Low | **NEEDED** |
-| **Date range filtering** | Essential for reporting and analysis | Low | Existing |
-| **Automatic timesheets** | Users expect automatic calculation and aggregation | Low | Existing |
-| **Multi-source aggregation** | Your differentiator - combining Toggl + Tempo | Medium | Existing |
-| **Visual reporting (charts)** | Users expect graphical representation of time data | Medium | Existing (Recharts) |
-| **Export capabilities** | Required for payroll, invoicing, record-keeping | Medium | **NEEDED** |
-| **Offline capability** | Apps should continue tracking even with poor connectivity | High | Not needed for dashboard aggregator |
+| Feature | Why Expected | Complexity | Dependencies | Notes |
+|---------|--------------|------------|--------------|-------|
+| Manual meter reading entry | Core data input method; users need to log readings from physical meters | LOW | None | Entry form with date, meter type (Strom/Gas/Wasser Warm), reading value |
+| Consumption calculation | Users expect automatic consumption = current - previous reading | LOW | Manual entry | System must handle meter rollovers (e.g., 99999 -> 00001) |
+| Reading history view | Users need to verify past readings and track entry patterns | LOW | Manual entry | Chronological list with edit/delete capabilities |
+| Current period consumption | Users want to see "How much have I used this month?" | LOW | Consumption calculation | Aggregate readings within date range |
+| Year-over-year comparison | Standard expectation from spreadsheet users; "Am I using more than last year?" | MEDIUM | 12+ months of data | Bar chart comparing same month across years |
+| Multi-meter support | Households have separate meters for Strom, Gas, Wasser Warm | LOW | None | Each meter type tracks independently |
+| Date range filtering | Users need to focus on specific time periods | LOW | Reading history | Standard date picker UI |
+| Cost estimation | Users want to know "How much will this cost me?" | MEDIUM | Consumption calculation | Requires rate configuration per meter type |
+| Data export (CSV/Excel) | Users migrating from Excel expect to export their data | LOW | Reading history | CSV export of readings and consumption |
+| Mobile-friendly interface | Meter readings happen at physical meter location, often via mobile | MEDIUM | Existing responsive UI | Forms must work on phone screens |
 
-### Differentiating Features (Nice-to-Have)
+### Differentiators (Competitive Advantage)
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| **Dark mode** | Reduces eye strain, extends battery life (OLED) | Low | Expected by 2026 standards |
-| **AI-powered insights** | Productivity patterns, time prediction | High | Post-MVP |
-| **Idle detection** | Automatic timeline correction | Medium | Post-MVP |
-| **Custom reporting** | Flexible report generation | Medium | Defer |
-| **Team collaboration** | Multi-user time tracking | High | Out of scope |
+Features that set this product apart from spreadsheets and basic tracking apps. Not strictly expected, but highly valued.
 
-### Current State Analysis
+| Feature | Value Proposition | Complexity | Dependencies | Notes |
+|---------|-------------------|------------|--------------|-------|
+| OCR meter reading from photos | Eliminates manual transcription errors; faster data entry | HIGH | Mobile camera access, OCR library/API | Seven-segment display recognition for digital meters; German meter formats |
+| Seasonal heatmap visualization | Reveals usage patterns at a glance; more intuitive than tables | MEDIUM | 12+ months of data | Calendar grid with color-coded consumption intensity |
+| Anomaly detection alerts | Proactively identifies unusual consumption (leaks, meter issues) | HIGH | Historical baseline, threshold algorithms | "Your Gas usage is 40% higher than typical February" |
+| Consumption forecasting | Helps users predict end-of-year totals and plan budgets | HIGH | 12+ months of seasonal data | Time series prediction with seasonal adjustment |
+| Photo attachment to readings | Proof of reading; useful for disputed bills or audits | MEDIUM | Image upload/storage | Link meter reading to photo of physical meter display |
+| Rate period tracking | Handles variable electricity rates (day/night, summer/winter) | MEDIUM | Cost estimation | German Hochtarif/Niedertarif split for Strom |
+| Excel import for historical data | Painless migration from existing spreadsheets | MEDIUM | CSV/Excel parsing | Map columns: date, meter type, reading value |
+| Comparison to neighborhood average | Social comparison motivates conservation; "You use 15% less than similar homes" | HIGH | External data source OR user-submitted anonymized data | Privacy-sensitive; may not be viable for v2.0 |
+| Goal setting and tracking | "Reduce Gas usage by 10% this year" with progress indicators | MEDIUM | Historical baseline | Define target, track progress, celebrate achievements |
+| Multi-location support | Users with vacation homes or rental properties track multiple addresses | MEDIUM | Data model extension | Group meters by location; existing time tracker has client/project hierarchy |
 
-**What you have:**
-- Real-time data visualization (Recharts with stacked bars)
-- Date range filtering with presets (Today, Week, Month, etc.)
-- Multi-source aggregation (Toggl + Tempo)
-- Basic CRUD operations on entries
-- Source and project filtering
+### Anti-Features (Commonly Requested, Often Problematic)
 
-**What's missing (from user expectations):**
-- Manual entry creation (only edit existing)
-- CSV export
-- PDF export
-- Dark mode
-- Bulk operations
+Features to explicitly NOT build or defer indefinitely. Common mistakes in this domain based on research.
 
-### Best Practices from Leading Apps
-
-**Toggl Track:**
-- Automated time tracking with desktop app
-- Calendar view for entries
-- User-specific billable rates
-- Invoicing integration
-
-**Clockify:**
-- Free plan with unlimited users
-- Idle time detection
-- Screenshot tracking (monitoring feature)
-- Scheduling and task delegation
-
-**Harvest:**
-- Duration vs Start/End time modes (user choice)
-- Built-in invoicing
-- Clean, polished client-facing reports
-- Simple contractor tracking
-
-**Key Insight:** Duration-based entry is the default pattern, but offering both duration and start/end time provides flexibility for different use cases.
+| Anti-Feature | Why Requested | Why Problematic | Alternative |
+|--------------|---------------|-----------------|-------------|
+| Real-time smart meter integration | "Why can't it sync automatically like my utility app?" | High complexity; each German utility has different API/protocol; smart meter rollout incomplete | Manual entry remains more reliable and universal |
+| Appliance-level energy disaggregation | "Show me how much my fridge uses" | Requires expensive hardware (Sense, Emporia Vue) or complex ML models; detection accuracy is poor (40-60%) per research | Focus on whole-home consumption; users can manually note appliance changes |
+| Social sharing/leaderboards | "Compete with friends to save energy!" | Privacy concerns; demotivating for high consumers; ethical issues per 2026 research | Private goal tracking only; no public comparison |
+| Automated bill reconciliation | "Match my utility bills automatically" | German Betriebskostenabrechnung varies by landlord format; OCR accuracy on PDF bills is inconsistent | Manual cost rate entry; export data for user to validate against bill |
+| AI chatbot for energy advice | Trendy but adds complexity; generic advice not useful | User research shows preference for actionable data visualizations over conversational UI | Clear charts with contextual tooltips explaining anomalies |
+| Blockchain/NFT energy credits | "Tokenize your savings!" | Gimmicky; solves no actual user problem; alienates pragmatic users | Focus on real cost savings and conservation impact |
+| Over-granular tracking (daily/hourly) | "Track usage every day!" | Manual meter reading is monthly; asking for daily input causes survey fatigue and abandonment | Monthly cadence matches utility billing cycle; focus on consistency |
+| Gamification badges | "Earn the 'Energy Warrior' badge!" | Perceived as childish for utility tracking; 2026 research shows minimalism preference | Simple progress bars and goal completion without badges |
 
 ---
 
-## 2. Export Patterns (CSV & PDF)
+## Feature Dependencies
 
-### CSV Export Implementation
-
-#### Recommended Approach: Client-Side Generation
-
-**Library:** `export-to-csv` (npm)
-- **Why:** Lightweight, stable, zero dependencies, well-typed
-- **Confidence:** HIGH (verified with npm package data)
-
-**Alternative:** Native implementation using Blob API
-```javascript
-// No external library needed for simple CSV
-const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
-const encodedUri = encodeURI(csvContent);
-const link = document.createElement("a");
-link.setAttribute("href", encodedUri);
-link.setAttribute("download", "export.csv");
-document.body.appendChild(link);
-link.click();
 ```
+Manual Entry (v2.0 foundational)
+  ├─> Consumption Calculation (v2.0)
+  │     ├─> Current Period Summary (v2.0)
+  │     ├─> Cost Estimation (v2.0)
+  │     ├─> Year-over-Year Charts (v2.0)
+  │     ├─> Seasonal Heatmap (v2.1)
+  │     ├─> Anomaly Detection (v2.2)
+  │     └─> Forecasting (v2.3)
+  │
+  ├─> Reading History View (v2.0)
+  │     ├─> Edit/Delete Readings (v2.0)
+  │     ├─> Data Export (v2.0)
+  │     └─> Photo Attachments (v2.1)
+  │
+  └─> Multi-Meter Support (v2.0)
+        └─> Multi-Location Support (v3.0+)
 
-**Best Practices:**
-- **Security:** Always validate and sanitize data before export (prevent CSV injection)
-- **Performance:** For large datasets (>10k rows), use pagination or streaming
-- **UX:** Show loading indicator during CSV generation
-- **Format:** Include headers, use proper escaping for commas/quotes
+Excel Import (v2.0)
+  └─> Bulk historical data → enables YoY, heatmaps, forecasting immediately
 
-**Other Options Considered:**
-| Library | Pros | Cons | Verdict |
-|---------|------|------|---------|
-| `react-csv` | React-specific, declarative | More dependencies | Good alternative |
-| `papaparse` | Powerful parser/generator | Heavier, overkill for simple export | Use for import only |
-| `csv` (Node.js) | Backend generation | Requires server round-trip | Use if need server-side processing |
+OCR Reading (v2.1)
+  └─> Optional enhancement to Manual Entry; not blocking for MVP
 
-#### When to Use Backend CSV Generation
+Rate Period Tracking (v2.1)
+  └─> Enhances Cost Estimation accuracy
 
-Generate CSV server-side (Node.js) when:
-- Dataset is too large for browser memory (>100k rows)
-- Need to aggregate data from multiple sources server-side
-- Security requirements prevent client-side data exposure
-
-**Recommended Backend Library:** `csv` (csv-stringify module)
-- Already used in project (`csv-parse` is installed)
-- Same ecosystem, familiar API
-- Fast and memory-efficient with streams
-
-### PDF Export Implementation
-
-#### Recommended Approach: Browser Automation (Server-Side)
-
-**Library:** `puppeteer` (Google's headless Chrome)
-- **Why:** Excellent HTML/CSS rendering, stable, well-maintained
-- **Best for:** Dynamic content, complex layouts, chart rendering
-- **Confidence:** HIGH (official Google project, actively maintained)
-
-**Key Advantages:**
-- Renders existing HTML/CSS directly (reuse dashboard components)
-- Perfect for converting charts (Recharts) to PDF
-- Supports modern CSS (Grid, Flexbox, custom fonts)
-- Waits for JavaScript/content to load before rendering
-
-**Implementation Pattern:**
-```typescript
-// Backend endpoint: /api/export/pdf
-import puppeteer from 'puppeteer';
-
-async function generatePDF(entries: TimeEntry[]) {
-  const browser = await puppeteer.launch();
-  const page = await browser.newPage();
-
-  // Option 1: Render existing frontend route
-  await page.goto('http://localhost:5173/print?data=' + encodeURIComponent(JSON.stringify(entries)));
-
-  // Option 2: Set HTML content directly
-  await page.setContent(generateReportHTML(entries));
-
-  const pdf = await page.pdf({
-    format: 'A4',
-    margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' },
-    printBackground: true
-  });
-
-  await browser.close();
-  return pdf;
-}
+Goal Setting (v2.2)
+  └─> Requires historical baseline from Consumption Calculation
 ```
-
-**Alternative: Playwright**
-- Microsoft's cross-browser automation tool
-- Similar to Puppeteer but supports Firefox/WebKit
-- **Limitation:** PDF generation only works with Chromium
-- **Verdict:** Use Puppeteer (simpler, focused on Chromium)
-
-#### Alternative: Low-Level PDF Generation
-
-**Library:** `pdfkit` (for Node.js backend)
-- **Why:** Creates PDFs programmatically element-by-element
-- **Best for:** Simple documents, invoices, receipts
-- **Cons:** Cannot render HTML/CSS, must draw everything manually
-- **Verdict:** Too complex for dashboard reports with charts
-
-**Not Recommended:**
-- `jspdf`: Client-side only, cannot run in Node.js without hacks
-- `wkhtmltopdf`: Outdated, deprecated HTML rendering engine
-
-### Export Feature Comparison
-
-| Approach | CSV | PDF |
-|----------|-----|-----|
-| **Where** | Client-side (browser) | Server-side (Puppeteer) |
-| **Library** | `export-to-csv` or Blob API | `puppeteer` |
-| **Use Case** | Raw data export for Excel | Formatted reports with charts |
-| **Performance** | Fast (<100ms) | Moderate (1-3 seconds) |
-| **Complexity** | Low | Medium |
 
 ---
 
-## 3. Theme Switching (Dark Mode)
+## MVP Definition
 
-### Recommended Approach: Tailwind CSS Dark Mode
+### Launch With (v2.0 - Q2 2026)
 
-**Confidence:** HIGH (official Tailwind documentation + project already uses Tailwind)
+**Core data model:**
+- Meter entity (type: Strom/Gas/Wasser Warm, unit: kWh/m³, location)
+- Reading entity (meter_id, date, value, optional note)
+- Consumption calculation (delta between consecutive readings)
 
-#### Configuration
+**Essential UI:**
+1. Manual meter reading entry form (mobile-optimized)
+2. Reading history table (view, edit, delete)
+3. Current month consumption summary cards (per meter type)
+4. Year-over-year bar chart (same month, prior years)
+5. Cost estimation with configurable rates per meter type
+6. Excel/CSV import for historical readings (migration path)
+7. Data export (CSV)
 
-Your project uses Tailwind CSS, which has built-in dark mode support.
+**Rationale:** Achieves feature parity with user's existing Excel workflow while adding web accessibility and multi-device support. All LOW complexity features. Enables immediate user migration and validation.
 
-**Step 1: Enable in `tailwind.config.js`**
-```javascript
-module.exports = {
-  darkMode: 'class', // Enable class-based dark mode
-  // ... rest of config
-}
-```
+### Add After Validation (v2.x - Q3-Q4 2026)
 
-**Step 2: Add Dark Mode Variants to Components**
-```jsx
-<div className="bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100">
-  <h1 className="text-indigo-600 dark:text-indigo-400">Dashboard</h1>
-</div>
-```
+**v2.1 - Enhanced Visualization & Input:**
+- Seasonal heatmap (calendar grid with color-coded consumption)
+- Photo attachment to readings (proof of reading)
+- OCR meter reading from mobile photos (requires research flag)
+- Rate period tracking (Hochtarif/Niedertarif for Strom)
 
-**Step 3: Theme Toggle Logic (React)**
-```typescript
-// hooks/useTheme.ts
-import { useEffect, useState } from 'react';
+**v2.2 - Intelligence Layer:**
+- Anomaly detection alerts (unusual consumption patterns)
+- Goal setting and progress tracking
+- Enhanced export (PDF report with charts)
 
-export function useTheme() {
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    // 1. Check localStorage
-    const stored = localStorage.getItem('theme');
-    if (stored) return stored as 'light' | 'dark';
+**v2.3 - Forecasting:**
+- Consumption prediction (end-of-year projections)
+- Seasonal trend analysis
 
-    // 2. Check system preference
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return 'dark';
-    }
+**Rationale:** MEDIUM-HIGH complexity features that require 12+ months of data and phase-specific research. Adds value beyond spreadsheet replacement but not blocking for launch.
 
-    return 'light';
-  });
+### Future Consideration (v3.0+ - 2027)
 
-  useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
-    localStorage.setItem('theme', theme);
-  }, [theme]);
+**Nice-to-have, not core:**
+- Multi-location support (vacation homes, rental properties)
+- Advanced rate structures (time-of-use, tiered rates)
+- Carbon footprint calculation
+- Weather overlay (correlate heating usage with temperature)
+- Comparison to prior occupant (for renters)
 
-  const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
-
-  return { theme, toggleTheme };
-}
-```
-
-**Step 4: Theme Toggle Button**
-```jsx
-import { Moon, Sun } from 'lucide-react';
-
-function ThemeToggle() {
-  const { theme, toggleTheme } = useTheme();
-
-  return (
-    <button
-      onClick={toggleTheme}
-      className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
-      aria-label="Toggle theme"
-    >
-      {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
-    </button>
-  );
-}
-```
-
-### Best Practices
-
-1. **Respect System Preferences:** Use `prefers-color-scheme` media query as default
-2. **Persist User Choice:** Store preference in `localStorage`
-3. **Avoid Flash:** Set theme class on initial render (before hydration)
-4. **Test Color Contrast:** Ensure WCAG AA compliance in both modes
-5. **Chart Compatibility:** Update Recharts colors for dark mode
-
-**Recharts Dark Mode Example:**
-```jsx
-<CartesianGrid
-  strokeDasharray="3 3"
-  stroke={theme === 'dark' ? '#374151' : '#f3f4f6'}
-/>
-<XAxis
-  tick={{ fill: theme === 'dark' ? '#9ca3af' : '#6b7280' }}
-/>
-```
-
-### Alternative Approaches Considered
-
-| Approach | Pros | Cons | Verdict |
-|----------|------|------|---------|
-| **CSS Variables** | Framework-agnostic | More verbose than Tailwind | Use if not using Tailwind |
-| **React Context + styled-components** | Full theming control | Adds dependencies | Overkill for simple dark mode |
-| **use-dark-mode hook** | Pre-built solution | Unnecessary dependency | Tailwind + custom hook is simpler |
+**Explicitly deferred:**
+- Smart meter API integration (too complex, limited ROI)
+- Appliance-level disaggregation (requires hardware)
+- Social features (privacy concerns)
 
 ---
 
-## 4. Manual Time Entry UI Patterns
+## Feature Prioritization Matrix
 
-### Core Design Patterns
+### High Value + Low Cost (Do First - v2.0)
 
-#### Input Method: Duration vs Start/End Time
+| Feature | User Value | Implementation Cost | Priority | Notes |
+|---------|------------|---------------------|----------|-------|
+| Manual meter reading entry | CRITICAL | LOW | P0 | Foundation of entire feature set |
+| Consumption calculation | CRITICAL | LOW | P0 | Core value proposition |
+| Reading history view | HIGH | LOW | P0 | Users verify past entries |
+| Multi-meter support | CRITICAL | LOW | P0 | German households have 3 meter types |
+| Year-over-year comparison | HIGH | MEDIUM | P0 | Primary reason to move from spreadsheet |
+| Excel import | HIGH | MEDIUM | P0 | Migration path for existing data |
+| Cost estimation | HIGH | MEDIUM | P0 | Users care about bills, not just kWh |
+| Data export | MEDIUM | LOW | P1 | Expected by spreadsheet users |
+| Mobile-friendly UI | HIGH | MEDIUM | P0 | Meters are at physical locations |
 
-**Recommendation:** Offer both, default to duration
+### High Value + High Cost (Do Later - v2.1+)
 
-**Why:**
-- Harvest research shows duration is the default in modern apps
-- Start/End time is preferred for detailed tracking (field workers, consultants)
-- Flexibility accommodates different user preferences
+| Feature | User Value | Implementation Cost | Priority | Notes |
+|---------|------------|---------------------|----------|-------|
+| OCR meter reading | HIGH | HIGH | P2 | Research phase needed for German meters |
+| Seasonal heatmap | MEDIUM | MEDIUM | P2 | Requires 12+ months data anyway |
+| Anomaly detection | HIGH | HIGH | P3 | ML/statistical analysis; needs baseline |
+| Forecasting | MEDIUM | HIGH | P3 | Time series modeling; seasonal adjustment |
+| Photo attachments | MEDIUM | MEDIUM | P2 | Useful for audits; straightforward storage |
 
-**Implementation:**
-```tsx
-type EntryMode = 'duration' | 'time-range';
+### Low Value + Low Cost (Nice-to-Have - v2.x)
 
-function ManualEntryForm() {
-  const [mode, setMode] = useState<EntryMode>('duration');
+| Feature | User Value | Implementation Cost | Priority | Notes |
+|---------|------------|---------------------|----------|-------|
+| Rate period tracking | MEDIUM | MEDIUM | P2 | Only relevant for two-tier Strom rates |
+| Goal setting | LOW | MEDIUM | P3 | Motivational, not functional |
+| Multi-location | LOW | MEDIUM | P4 | Edge case for most users |
 
-  return (
-    <form>
-      {/* Mode Toggle */}
-      <div className="flex gap-2 mb-4">
-        <button
-          type="button"
-          onClick={() => setMode('duration')}
-          className={mode === 'duration' ? 'active' : ''}
-        >
-          Duration
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode('time-range')}
-          className={mode === 'time-range' ? 'active' : ''}
-        >
-          Start/End Time
-        </button>
-      </div>
+### Low Value + High Cost (Avoid - Deferred)
 
-      {mode === 'duration' ? (
-        <DurationInput /> // e.g., "2h 30m" or "2.5"
-      ) : (
-        <TimeRangeInput /> // Start: 09:00, End: 11:30
-      )}
-    </form>
-  );
-}
-```
-
-### Form Field Best Practices
-
-#### 1. Date Selection
-
-**Library:** `react-day-picker` (already installed in project)
-- Already using this for date range picker
-- Consistent UX with existing filters
-- Good localization support (project uses German locale)
-
-**Pattern:**
-```tsx
-<DayPicker
-  mode="single"
-  selected={date}
-  onSelect={setDate}
-  locale={de}
-  defaultMonth={new Date()}
-/>
-```
-
-#### 2. Duration Input
-
-**Recommended Pattern:** Flexible text input with validation
-
-**Accept formats:**
-- Hours only: `2`, `2.5`, `2,5` (German decimal)
-- Hours and minutes: `2h 30m`, `2:30`, `02:30`
-- Natural language: Future enhancement with NLP
-
-**Validation:**
-```typescript
-function parseDuration(input: string): number | null {
-  // Match: "2.5", "2,5", "2h 30m", "2:30"
-
-  // Decimal hours
-  const decimal = input.replace(',', '.').match(/^(\d+\.?\d*)$/);
-  if (decimal) return parseFloat(decimal[1]);
-
-  // Hours and minutes (2h 30m)
-  const hm = input.match(/(\d+)h\s*(\d+)m/);
-  if (hm) return parseInt(hm[1]) + parseInt(hm[2]) / 60;
-
-  // Time format (2:30)
-  const time = input.match(/(\d+):(\d+)/);
-  if (time) return parseInt(time[1]) + parseInt(time[2]) / 60;
-
-  return null;
-}
-```
-
-**UX:**
-- Show placeholder: `"z.B. 2.5 oder 2h 30m"` (German)
-- Inline validation with helpful error messages
-- Convert to hours on blur for consistency
-
-#### 3. Time Range Input (Start/End)
-
-**Recommended:** HTML5 `<input type="time">` with 24-hour format
-
-**Pattern:**
-```tsx
-<div className="grid grid-cols-2 gap-4">
-  <div>
-    <label>Start</label>
-    <input
-      type="time"
-      value={startTime}
-      onChange={e => setStartTime(e.target.value)}
-      className="..."
-    />
-  </div>
-  <div>
-    <label>End</label>
-    <input
-      type="time"
-      value={endTime}
-      onChange={e => setEndTime(e.target.value)}
-      className="..."
-    />
-  </div>
-
-  {/* Auto-calculated duration */}
-  <div className="col-span-2 text-sm text-gray-500">
-    Duration: {calculateDuration(startTime, endTime)} hours
-  </div>
-</div>
-```
-
-**Why native time input:**
-- Mobile-optimized (native picker on iOS/Android)
-- Locale-aware formatting
-- Built-in validation
-- No extra dependencies
-
-**Alternative for better desktop UX:** Time picker component
-- Consider `react-time-picker` if native input UX is insufficient
-- Most users are comfortable with native time inputs in 2026
-
-#### 4. Project Selection
-
-**Recommendation:** Searchable dropdown (combobox)
-
-**Current Implementation:** Basic `<select>` dropdown
-- Works well for <50 projects
-- Add search if project list grows
-
-**Future Enhancement Pattern:**
-```tsx
-// When project list exceeds ~20 items
-<Combobox
-  value={selectedProject}
-  onChange={setSelectedProject}
-  options={projects}
-  searchable
-  placeholder="Search projects..."
-/>
-```
-
-#### 5. Description Field
-
-**Best Practice:** Optional textarea with auto-expand
-- Keep optional (not all time entries need descriptions)
-- Use `<textarea>` with `rows={2}` initially
-- Auto-expand as user types (or use `contenteditable`)
-
-### Form Layout
-
-**Recommended Structure:**
-```
-┌─────────────────────────────────┐
-│  Manual Time Entry              │
-├─────────────────────────────────┤
-│  Date:        [Calendar Picker] │
-│                                 │
-│  Entry Mode:  [Duration] [Time] │ <- Toggle
-│                                 │
-│  {Mode === 'duration' ?         │
-│    Duration:  [2.5 hours]       │
-│  :                              │
-│    Start:     [09:00]           │
-│    End:       [11:30]           │
-│    Duration:  2.5 hours (auto)  │
-│  }                              │
-│                                 │
-│  Project:     [Select Project▼] │
-│                                 │
-│  Description: [Optional text... │
-│                                ] │
-│                                 │
-│  Source:      ● Manual Entry    │ <- Read-only badge
-│                                 │
-│  [Cancel]           [Add Entry] │
-└─────────────────────────────────┘
-```
-
-### Validation Requirements
-
-| Field | Validation | Error Message |
-|-------|------------|---------------|
-| Date | Required, not in future | "Date cannot be in the future" |
-| Duration | Required, > 0, < 24 hours | "Duration must be between 0 and 24 hours" |
-| Start/End | End > Start | "End time must be after start time" |
-| Project | Required | "Please select a project" |
-| Description | Optional, max 500 chars | - |
-
-### Form Validation Library
-
-**Recommendation:** `React Hook Form` + `Zod`
-
-**Why:**
-- Minimal re-renders (performance)
-- TypeScript-first with Zod schemas
-- Built-in validation
-- Easy async validation
-
-**Example:**
-```typescript
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
-
-const entrySchema = z.object({
-  date: z.date().max(new Date(), "Cannot be in future"),
-  duration: z.number().min(0.01).max(24),
-  project: z.string().min(1, "Project required"),
-  description: z.string().max(500).optional(),
-});
-
-type EntryForm = z.infer<typeof entrySchema>;
-
-function ManualEntryForm() {
-  const { register, handleSubmit, formState: { errors } } = useForm<EntryForm>({
-    resolver: zodResolver(entrySchema),
-  });
-
-  const onSubmit = (data: EntryForm) => {
-    // Create entry
-  };
-
-  return <form onSubmit={handleSubmit(onSubmit)}>...</form>;
-}
-```
-
-**Alternative:** Native HTML5 validation
-- Use `required`, `min`, `max`, `pattern` attributes
-- Works for simple forms
-- Less flexible than React Hook Form
+| Feature | User Value | Implementation Cost | Priority | Notes |
+|---------|------------|---------------------|----------|-------|
+| Smart meter integration | LOW | VERY HIGH | P5 | Each utility has different API; unreliable |
+| Appliance disaggregation | LOW | VERY HIGH | P5 | Requires hardware; poor accuracy |
+| Social features | LOW | MEDIUM | P5 | Privacy concerns; demotivating |
+| Blockchain features | NONE | HIGH | P6 | Gimmicky; no user problem solved |
 
 ---
 
-## Implementation Recommendations
+## German Utility Specifics
 
-### Phase 1: Manual Entry (Highest Priority)
+### Meter Types and Units
+- **Strom (Electricity):** kWh, potentially dual-register (Hochtarif/Niedertarif)
+- **Gas:** m³ (sometimes kWh on bill due to conversion factor)
+- **Wasser Warm (Hot Water):** m³
 
-**Why first:** Table stakes feature, unblocks user workflows
+### Reading Cadence
+- Most users read meters monthly (matches billing cycle)
+- Betriebskostenabrechnung (annual statement from landlord) requires yearly validation
+- Avoid over-granular daily tracking (causes survey fatigue)
 
-**Implementation:**
-1. Add "New Entry" button to dashboard header
-2. Create modal with form (reuse EditModal pattern)
-3. Duration input with flexible parsing
-4. Validation with React Hook Form + Zod
-5. API endpoint: `POST /api/entries`
+### Cost Structure
+- Electricity (Strom): ~30-40 ct/kWh in 2026 (up from 18 ct in 2020)
+- Gas: ~8-12 ct/kWh or ~1-2 EUR/m³
+- Water: ~2 EUR/m³ (cold water) + wastewater ~2.50 EUR/m³
+- Hot water calculation: cold water + heating energy (complex, often in Betriebskosten)
 
-**Complexity:** Low (1-2 days)
-
-### Phase 2: CSV Export (High Priority)
-
-**Why second:** Simple, high-value feature
-
-**Implementation:**
-1. Add "Export CSV" button to table header
-2. Use `export-to-csv` library or Blob API
-3. Include filtered entries only
-4. Format: Date, Source, Project, Description, Duration
-
-**Complexity:** Low (0.5-1 day)
-
-### Phase 3: Dark Mode (Medium Priority)
-
-**Why third:** Polish feature, enhances UX
-
-**Implementation:**
-1. Enable `darkMode: 'class'` in Tailwind config
-2. Create `useTheme` hook
-3. Add dark mode variants to components systematically
-4. Update Recharts colors for dark mode
-5. Add theme toggle button to header
-
-**Complexity:** Medium (2-3 days for full coverage)
-
-### Phase 4: PDF Export (Lower Priority)
-
-**Why last:** Complex, nice-to-have
-
-**Implementation:**
-1. Install Puppeteer on backend
-2. Create print-friendly report template
-3. Backend endpoint: `GET /api/export/pdf`
-4. Stream PDF response to client
-
-**Complexity:** Medium-High (2-3 days)
+### Meter Display Types
+- Modern digital meters: 7-segment LCD displays (OCR-friendly)
+- Older analog meters: mechanical dials (OCR-challenging; manual entry preferred)
+- Smart meters: rolling out slowly; no universal API access for consumers
 
 ---
 
-## Libraries to Install
+## Research Flags for Subsequent Phases
 
-### Frontend (React)
-```bash
-npm install export-to-csv          # CSV export
-npm install react-hook-form zod    # Form validation
-npm install @hookform/resolvers    # Zod + React Hook Form integration
-```
+### Phase v2.1 - OCR Research Required
+- **Question:** Which OCR libraries/APIs handle German digital meter displays reliably?
+- **Options to evaluate:** Anyline SDK, Klippa API, Tesseract OCR, cloud vision APIs
+- **Key criteria:** Accuracy on 7-segment displays, mobile SDK availability, cost, offline capability
+- **Deliverable:** OCR technology selection with PoC validation
 
-### Backend (Node.js)
-```bash
-npm install puppeteer              # PDF generation
-```
+### Phase v2.2 - Anomaly Detection Research Required
+- **Question:** What constitutes an "anomaly" for residential utility consumption?
+- **Approach:** Statistical outlier detection (e.g., usage > 2 standard deviations from monthly average) vs. ML-based
+- **Considerations:** Seasonal adjustment, heating degree days, occupancy changes
+- **Deliverable:** Anomaly detection algorithm with configurable thresholds
 
-### Already Installed (Leverage Existing)
-- `react-day-picker` - Date selection
-- `lucide-react` - Icons (add Moon/Sun for theme toggle)
-- `tailwindcss` - Dark mode built-in
-- `csv-parse` - Already using for import (csv ecosystem)
-
----
-
-## Architecture Considerations
-
-### API Endpoints to Add
-
-```typescript
-// Manual entry creation
-POST /api/entries
-Body: { date, duration, project, description, source: 'MANUAL' }
-
-// CSV export (optional server-side)
-GET /api/export/csv?startDate=...&endDate=...&source=...
-
-// PDF export (server-side with Puppeteer)
-GET /api/export/pdf?startDate=...&endDate=...&source=...
-Response: application/pdf (stream)
-```
-
-### Database Schema (Existing Prisma)
-
-Your `TimeEntry` model already supports manual entries:
-- `source` field can be 'MANUAL' (add to enum if not present)
-- All required fields exist
-- No schema changes needed
-
-**Recommendation:** Add source type if not present:
-```prisma
-enum Source {
-  TOGGL
-  TEMPO
-  MANUAL  // Add this
-}
-```
-
-### State Management
-
-**Current:** useState hooks (sufficient for current scale)
-
-**Recommendation:** Continue with local state
-- Form state: React Hook Form
-- Theme state: localStorage + custom hook
-- No need for Redux/Zustand at current complexity
+### Phase v2.3 - Forecasting Research Required
+- **Question:** What forecasting model handles seasonal utility data best?
+- **Options:** SARIMA, Prophet (Facebook), simple moving average with seasonal adjustment
+- **Considerations:** Limited data points (monthly readings), German heating season (Oct-Apr), prediction horizon (3-12 months)
+- **Deliverable:** Forecasting model selection with accuracy benchmarks
 
 ---
 
-## Pitfalls to Avoid
+## Ecosystem Insights
 
-### CSV Export
-- **CSV Injection:** Sanitize data (escape leading `=`, `+`, `-`, `@`)
-- **Large Datasets:** Add pagination or warning for >10k rows
-- **Character Encoding:** Use UTF-8 BOM for Excel compatibility
+### What Users Migrate From
+1. **Excel spreadsheets** (most common) - monthly readings, manual YoY bar charts, cost calculations
+2. **Paper notebooks** - handwritten logs, no analysis
+3. **Utility company apps** - limited historical data, no cross-utility comparison
+4. **Home Assistant** - tech-savvy users; overly complex for single-purpose need
 
-### PDF Export
-- **Memory Leaks:** Always close Puppeteer browser instances
-- **Timeouts:** Set reasonable timeout (30s) for PDF generation
-- **Concurrent Requests:** Limit concurrent Puppeteer instances (use queue)
+### What Users Value Most (per research)
+1. **Simplicity over features** - 2026 trend toward minimalism; avoid feature bloat
+2. **Actionable insights** - clear visualizations, not raw numbers
+3. **Mobile convenience** - meter reading happens at physical location
+4. **Data ownership** - export capability, no vendor lock-in
+5. **Privacy** - personal consumption data, no social sharing
 
-### Dark Mode
-- **Flash of Wrong Theme:** Set class before React hydration
-- **Chart Colors:** Update all chart components for both themes
-- **Contrast:** Test accessibility (use Chrome DevTools contrast checker)
-
-### Manual Entry
-- **Timezone Issues:** Store in UTC, display in user's timezone
-- **Duplicate Prevention:** Validate for overlapping time entries
-- **Validation UX:** Show inline errors, not just on submit
-
----
-
-## Testing Checklist
-
-### Manual Entry Form
-- [ ] Can create entry with duration format "2.5"
-- [ ] Can create entry with duration format "2h 30m"
-- [ ] Can create entry with start/end times
-- [ ] Cannot create entry in future
-- [ ] Cannot create entry with duration > 24h
-- [ ] Form validates required fields
-- [ ] Successfully saves to database
-- [ ] Appears in dashboard immediately
-
-### CSV Export
-- [ ] Exports all filtered entries
-- [ ] Respects date range filter
-- [ ] Respects source filter
-- [ ] Includes correct headers
-- [ ] Opens properly in Excel
-- [ ] Handles special characters (commas, quotes)
-- [ ] German locale decimal formatting
-
-### Dark Mode
-- [ ] Persists across page reloads
-- [ ] Respects system preference on first visit
-- [ ] All text is readable in both modes
-- [ ] Charts are visible in both modes
-- [ ] No flash on page load
-
-### PDF Export
-- [ ] Generates valid PDF
-- [ ] Includes chart visualization
-- [ ] Includes table data
-- [ ] Respects date range
-- [ ] Downloads with correct filename
-- [ ] Handles timeout gracefully
+### Common Pain Points to Avoid
+1. **Survey fatigue** - asking for too frequent readings (daily) causes abandonment
+2. **Complex setup** - over-configuration before first use
+3. **Poor mobile experience** - desktop-first design fails at meter location
+4. **Inaccurate OCR** - false confidence in bad readings worse than manual entry
+5. **Feature overwhelm** - AI/gamification alienates pragmatic users
 
 ---
 
 ## Sources
 
-### Time Tracking Dashboard Features
-- [9 Best Time Tracking Apps In 2026](https://thebusinessdive.com/time-tracking-apps)
-- [Time Tracking in Chronic Care Management: Best Practices & Tools for 2026](https://circle.healthcare/blogs/chronic-care-management-time-tracking-best-practices/)
-- [13 Best Time Tracking Apps Compared for 2026](https://tivazo.com/best-time-tracking-apps/)
-- [Toggl Track: Time Tracking Software](https://toggl.com/)
-- [Best Time Tracking Apps: 2025 Time Tracker App Breakdown](https://clockify.me/best-time-tracking-apps)
-- [Harvest vs Toggl: Time Tracking Comparison (2026)](https://efficient.app/compare/harvest-vs-toggl)
+### Ecosystem and Best Practices
+- [The Best Energy Monitoring Tools in 2026](https://www.vivint.com/resources/article/energy-monitoring)
+- [Utility Meter - Home Assistant](https://www.home-assistant.io/integrations/utility_meter/)
+- [Utility Meter Tracker - Google Play](https://play.google.com/store/apps/details?id=com.trendmobile.metering&hl=en_US)
+- [Best Electricity Apps to Track Your Usage of 2024](https://www.libertyhomeguard.com/blog/home-maintenance/best-electricity-apps-to-track-your-usage/)
 
-### CSV/PDF Export
-- [The 5 Node.js PDF Libraries Every Developer Must Know](https://dev.to/xeshan6981/the-5-nodejs-pdf-libraries-every-developer-must-know-4b39)
-- [export-to-csv - npm](https://www.npmjs.com/package/export-to-csv)
-- [Best HTML to PDF libraries for Node.js](https://blog.logrocket.com/best-html-pdf-libraries-node-js/)
-- [React CSV Best Practices](https://www.dhiwise.com/post/react-csv-best-practices-optimizing-performance)
-- [Implementing CSV Data Export in React Without External Libraries](https://dev.to/graciesharma/implementing-csv-data-export-in-react-without-external-libraries-3030)
-- [PDF Generation from HTML: Puppeteer, Playwright, and wkhtmltopdf Comparison](https://medium.com/@coders.stop/pdf-generation-from-html-i-tested-puppeteer-playwright-and-wkhtmltopdf-so-you-dont-have-to-d14228d28c4c)
+### OCR and Mobile Reading
+- [Anyline Mobile SDK for Meter Reading](https://anyline.com/products/ocr-meter-reading)
+- [Klippa Utility Meter OCR](https://www.klippa.com/en/ocr/data-fields/utility-meters/)
+- [OCR-App GitHub - Electric Meter Digit Detection](https://github.com/DevTeamOCR/OCR-App)
+- [Mobile OCR Reading Blog](https://eam360.com/ocr-reading-using-mobile-app)
 
-### Dark Mode
-- [Dark mode - Tailwind CSS Official Docs](https://tailwindcss.com/docs/dark-mode)
-- [Dark mode in React: An in-depth guide](https://blog.logrocket.com/dark-mode-react-in-depth-guide/)
-- [How to Implement Dark Mode in React with Tailwind CSS](https://medium.com/@mustafamulla765/how-to-implement-dark-mode-in-react-with-tailwind-css-94df7522ed82)
-- [Create a Persisting Dark Mode with React](https://www.pullrequest.com/blog/create-a-persisting-dark-mode-with-react/)
+### German Utility Context
+- [Germany's Energy Consumption Charts](https://www.cleanenergywire.org/factsheets/germanys-energy-consumption-and-power-mix-charts)
+- [Energy Cost Calculator for Germany 2026](https://www.how-to-germany.com/energy-cost-calculator/)
+- [The Ultimate Utilities Guide for Tenants in Germany](https://housinganywhere.com/Germany/utilities-in-germany)
+- [Stromzähler Kosten 2026](https://www.enpal.de/strom/stromzaehler-kosten)
+- [Cost of Home Utilities in Germany 2024](https://germansuperfast.com/utilities-in-germany/)
 
-### Manual Entry UI Patterns
-- [Time Picker UX: Best Practices, Patterns & Trends for 2025](https://www.eleken.co/blog-posts/time-picker-ux)
-- [Harvest's two timer modes: Duration & Start and End Times](https://www.getharvest.com/blog/timer-mode)
-- [Form UI Design: A UX/UI Guide](https://designlab.com/blog/form-ui-design-best-practices)
-- [React Form Validation: Real-time Validation to Complex Forms](https://medium.com/@dlrnjstjs/react-form-validation-from-real-time-validation-to-complex-forms-b23e49233be2)
-- [React Hook Form Official Docs](https://react-hook-form.com/)
+### Visualization and Analytics
+- [Energy Use Intensity Tracking](https://www.energycap.com/utility-bill-energy-management-software/features/energy-use-intensity/)
+- [Energy Heatmap Analysis](https://www.energycap.com/energy-monitoring-software/features/energy-heatmap-analysis/)
+- [How a Heat Map Can Lower Your Energy Bill](https://kw-engineering.com/energy-savings-calendar-heat-map/)
+- [Seasonality Analysis - TSstudio](https://ramikrispin.github.io/TSstudio/articles/seasonality_analysis.html)
+- [Heatmaps in Data Visualization](https://inforiver.com/insights/heatmaps-in-data-visualization-a-comprehensive-introduction/)
 
-### Component Libraries
-- [React Date Picker component - MUI X](https://mui.com/x/react-date-pickers/date-picker/)
-- [Date Picker Component for React | React DayPicker](https://daypicker.dev/)
+### Anomaly Detection
+- [Detection of Anomalies Using Smart Meters](https://www.mdpi.com/1424-8220/24/2/515)
+- [AI-based Anomaly Detection in Buildings Review](https://www.sciencedirect.com/science/article/pii/S0306261921001409)
+- [Anomaly Detection in Energy Consumption](https://link.springer.com/article/10.1186/s42162-022-00230-7)
+- [Machine Learning Anomaly Detection Framework](https://www.sciencedirect.com/science/article/pii/S2352467723002023)
+- [Anomaly Detection and Prediction for Smart Homes](https://onlinelibrary.wiley.com/doi/full/10.4218/etrij.2023-0155)
+
+### Forecasting and Prediction
+- [2026 Electricity Price Forecasts](https://bidonenergy.org/2026-2025-electricity-price-forecasts/)
+- [Utility Bill Increase Calculator 2026](https://www.energycap.com/blog/utility-bill-increase-calculator/)
+- [Electricity Bill Calculator](https://www.powerwizard.com/tools/electricity-bill-calculator/)
+- [Will Electricity Prices Go Down in 2026?](https://www.solar.com/learn/will-electricity-prices-go-down/)
+
+### Cost Estimation
+- [How To Estimate Utility Costs 2025 Guide](https://solartechonline.com/blog/how-to-estimate-utility-costs/)
+- [Average Utility Bill Per Month 2026](https://homeguide.com/costs/average-utility-bill)
+- [Bill Calculator - Burbank Water and Power](https://www.burbankwaterandpower.com/bill-calculator)
+
+### Data Import and Management
+- [ImportMeter Utility Spreadsheet](https://webhelp.e-automate.com/201/Spreadsheet_Utilities/ImportMeter_Utility_Spreadsheet_(On_Premise).htm)
+- [How to Import Meter Readings](https://help.onupkeep.com/en/articles/4723787-how-to-import-meter-readings)
+- [Utility Consumption Tracker 2026 Excel Template](https://excelbundle.com/utility-consumption-tracker/)
+- [Meter Data Management Systems 2026](https://research.aimultiple.com/meter-data-management/)
+- [Interval Data - Energy Data](https://www.energylens.com/interval-data)
+
+### User Experience and Pitfalls
+- [7 UI Pitfalls Mobile App Developers Should Avoid 2026](https://www.webpronews.com/7-ui-pitfalls-mobile-app-developers-should-avoid-in-2026/)
+- [5 Common Mistakes Using Tracking Software](https://editorialge.com/mistakes-to-avoid-using-tracking-software/)
+- [Best Home Energy Management Systems 2026](https://www.greenerwisdom.com/blog/best-home-energy-management-systems)
+- [Smart Energy Monitor Guide](https://shinesto.com/smart-energy-monitor-guide/)
+- [Energy Tracker App Reviews](https://www.energysage.com/energy-management/energy-monitors/)
 
 ---
 
 ## Conclusion
 
-All four feature areas have clear, well-established implementation patterns with strong library support. The recommended stack integrates seamlessly with your existing architecture (React + Tailwind + Fastify + Prisma).
+Research reveals a well-established domain with clear user expectations. Utility meter tracking applications succeed when they:
 
-**Next Steps:**
-1. Install recommended libraries
-2. Implement manual entry form (highest priority)
-3. Add CSV export (quick win)
-4. Implement dark mode (UX polish)
-5. Add PDF export (nice-to-have)
+1. **Start simple** - Manual entry, consumption calculation, YoY comparison (table stakes)
+2. **Add intelligence gradually** - OCR, heatmaps, anomaly detection (after user validation)
+3. **Respect privacy** - No social features; personal data stays personal
+4. **Stay mobile-friendly** - Meters are at physical locations; mobile-first design essential
+5. **Avoid over-complexity** - Smart meter integration and appliance disaggregation are anti-patterns
+
+**Key takeaway:** Users want "Excel plus mobile plus pretty charts," not an AI-powered smart home hub. The v2.0 MVP should achieve feature parity with spreadsheets while adding web/mobile convenience. Advanced features (OCR, anomaly detection, forecasting) are differentiators for v2.1+ once core workflow is validated.
 
 **Confidence Assessment:**
-- **CSV Export:** HIGH - Simple, proven patterns
-- **Dark Mode:** HIGH - Tailwind built-in, well-documented
-- **Manual Entry:** HIGH - Standard form patterns
-- **PDF Export:** MEDIUM - Puppeteer adds complexity but is well-supported
-
-The research is comprehensive and ready to guide implementation.
+- **Table stakes features:** HIGH - Clear patterns, straightforward implementation
+- **OCR meter reading:** MEDIUM - Technology exists but requires phase-specific research for German meters
+- **Anomaly detection:** MEDIUM - Statistical methods are proven; tuning thresholds requires testing
+- **Forecasting:** MEDIUM - SARIMA/Prophet models handle seasonality well; validation needed

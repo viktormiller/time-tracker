@@ -1,2177 +1,827 @@
-# Architecture Patterns for Time Tracking Aggregation System
+# Architecture Research
 
-**Domain:** Time Tracking Aggregation Platform
-**Researched:** 2026-01-19
+**Domain:** Utility meter tracking integration
+**Researched:** 2026-02-06
 **Confidence:** HIGH
 
-## Executive Summary
+## System Overview
 
-This document provides architectural patterns for a time tracking aggregation system that:
-- Aggregates entries from multiple sources (Toggl, Tempo, Clockify, CSV imports)
-- Exposes a unified REST API for web frontend and Go CLI clients
-- Starts as single-user but can expand to multi-tenant
-- Runs in containerized environment (Docker Compose)
-
-**Current Stack Analysis:** The codebase uses Fastify + Prisma + SQLite with separate service classes (TogglService, TempoService) that directly fetch and upsert data. The adapter pattern exists for CSV imports but not for API sources.
-
-**Key Recommendations:**
-1. **Containerization:** Three-service Docker Compose with network isolation
-2. **CLI Authentication:** JWT-based authentication with config file storage
-3. **Provider Abstraction:** Unified adapter pattern with factory for all sources
-4. **Multi-tenant Path:** Start with tenant_id column, migrate to PostgreSQL + RLS for production
-
----
-
-## 1. Containerization Strategy
-
-### Recommended Architecture
-
-```yaml
-services:
-  frontend:
-    # React + Vite dev server or production build with nginx
-    networks:
-      - frontend-network
-      - backend-network
-    ports:
-      - "5173:5173"  # Development
-      # - "80:80"    # Production with nginx
-    depends_on:
-      - backend
-
-  backend:
-    # Fastify API server
-    networks:
-      - backend-network
-      - database-network
-    ports:
-      - "3000:3000"
-    depends_on:
-      database:
-        condition: service_healthy
-    environment:
-      - NODE_ENV=production
-      - DATABASE_URL=postgresql://user:pass@database:5432/timetracker
-      - JWT_SECRET=${JWT_SECRET}
-    volumes:
-      - ./backend/src:/app/src  # Development hot-reload
-      - api-logs:/app/logs
-
-  database:
-    # PostgreSQL for production, SQLite for development
-    image: postgres:16-alpine
-    networks:
-      - database-network
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_DB=timetracker
-      - POSTGRES_USER=${DB_USER}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-networks:
-  frontend-network:
-    driver: bridge
-  backend-network:
-    driver: bridge
-    internal: true  # No external access
-  database-network:
-    driver: bridge
-    internal: true  # No external access
-
-volumes:
-  postgres-data:
-  api-logs:
-```
-
-### Network Segmentation Rationale
-
-**Three-tier isolation:**
-- **frontend-network:** Public-facing, exposes to host
-- **backend-network:** Internal only, frontend ↔ backend communication
-- **database-network:** Internal only, backend ↔ database communication
-
-**Security benefits:**
-- Database never exposed to external networks
-- Backend only accessible via frontend (or direct port exposure for CLI)
-- Clear trust boundaries between tiers
-
-**Source:** [Docker Compose Application Model](https://docs.docker.com/compose/intro/compose-application-model/)
-
-### Service Dependencies
-
-Use `depends_on` with health checks to ensure proper startup order:
-
-```yaml
-backend:
-  depends_on:
-    database:
-      condition: service_healthy  # Wait for PostgreSQL ready
-
-frontend:
-  depends_on:
-    - backend  # Start after backend running
-```
-
-**Critical for production:** Database migrations must run after database is healthy but before backend accepts traffic.
-
-**Pattern:** Add init container or entrypoint script:
-```dockerfile
-# backend/docker-entrypoint.sh
-#!/bin/sh
-npx prisma migrate deploy
-exec node dist/server.js
-```
-
-**Sources:**
-- [Multi-Service Docker Compose Architecture](https://wkrzywiec.medium.com/how-to-run-database-backend-and-frontend-in-a-single-click-with-docker-compose-4bcda66f6de)
-- [Docker Compose Networks Best Practices](https://www.compilenrun.com/docs/devops/docker/docker-compose/docker-compose-networks/)
-
-### Development vs Production Configurations
-
-**Development (`docker-compose.yml`):**
-```yaml
-backend:
-  build:
-    context: ./backend
-    target: development
-  volumes:
-    - ./backend/src:/app/src  # Hot reload
-  environment:
-    - NODE_ENV=development
-    - DATABASE_URL=file:./dev.db  # SQLite for fast dev
-```
-
-**Production (`docker-compose.prod.yml`):**
-```yaml
-backend:
-  build:
-    context: ./backend
-    target: production
-  environment:
-    - NODE_ENV=production
-    - DATABASE_URL=${DATABASE_URL}  # PostgreSQL
-  restart: unless-stopped
-  deploy:
-    resources:
-      limits:
-        cpus: '1.0'
-        memory: 512M
-```
-
-Merge with: `docker-compose -f docker-compose.yml -f docker-compose.prod.yml up`
-
-### Dockerfile Best Practices
-
-**Multi-stage build for backend:**
-```dockerfile
-# Stage 1: Build
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
-COPY . .
-RUN npx prisma generate
-RUN npm run build
-
-# Stage 2: Production
-FROM node:20-alpine AS production
-WORKDIR /app
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./
-EXPOSE 3000
-CMD ["node", "dist/server.js"]
-
-# Stage 3: Development
-FROM node:20-alpine AS development
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
-EXPOSE 3000
-CMD ["npm", "run", "dev"]
-```
-
-**Benefits:**
-- Small production image (node:20-alpine ~170MB)
-- No dev dependencies in production
-- Fast rebuilds with layer caching
-
-**Sources:**
-- [Fastify Prisma Docker Best Practices](https://jaygould.co.uk/2022-05-08-typescript-fastify-prisma-starter-with-docker/)
-- [Prisma Production Deployment](https://dev.to/lcnunes09/hardening-prisma-for-production-resilient-connection-handling-in-nodejs-apis-41dm)
-
----
-
-## 2. CLI-to-Backend Communication Patterns
-
-### Architecture Overview
+The utility meter tracking feature integrates into the existing time tracking application using parallel domain separation. The architecture leverages existing infrastructure (auth, nav, theme, database) while maintaining clean separation from time tracking concerns.
 
 ```
-┌─────────────┐                    ┌─────────────┐
-│   Go CLI    │ ─── HTTPS ──────▶ │  Backend    │
-│   (Local)   │ ◀── JSON ─────────│  REST API   │
-└─────────────┘                    └─────────────┘
-     │                                    │
-     │ Read/Write                         │ Database
-     ▼                                    ▼
-┌─────────────┐                    ┌─────────────┐
-│  Config     │                    │  PostgreSQL │
-│  ~/.timetrk │                    └─────────────┘
-└─────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                     Frontend (React + Vite)                 │
+├─────────────────────────────────────────────────────────────┤
+│  App.tsx                                                    │
+│  ├─ AuthProvider (existing)                                │
+│  ├─ ThemeProvider (existing)                               │
+│  └─ ToastProvider (existing)                               │
+│                                                             │
+│  Pages:                                                     │
+│  ├─ Dashboard (time tracking - existing)                   │
+│  ├─ AddEntry (time tracking - existing)                    │
+│  ├─ Estimates (existing)                                   │
+│  ├─ Settings (existing)                                    │
+│  └─ Utilities (NEW - meter dashboard)                      │
+│     ├─ MeterReadingsList                                   │
+│     ├─ ManualEntryForm                                     │
+│     ├─ OCRCapture                                          │
+│     ├─ ExcelImportModal                                    │
+│     ├─ UtilityChartGrid (7 chart types)                    │
+│     └─ UtilitySettings                                     │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                    Axios HTTP API
+                           │
+┌─────────────────────────────────────────────────────────────┐
+│              Backend (Fastify + TypeScript)                 │
+├─────────────────────────────────────────────────────────────┤
+│  server.ts                                                  │
+│  ├─ Auth plugin (existing)                                 │
+│  ├─ Security plugin (existing)                             │
+│  ├─ Multipart plugin (existing)                            │
+│  └─ Protected routes wrapper                               │
+│                                                             │
+│  Routes:                                                    │
+│  ├─ /api/time-entries (existing)                           │
+│  ├─ /api/estimates (existing)                              │
+│  └─ /api/utilities (NEW)                                   │
+│     ├─ GET /readings - list readings                       │
+│     ├─ POST /readings - create manual reading              │
+│     ├─ PUT /readings/:id - update reading                  │
+│     ├─ DELETE /readings/:id - delete reading               │
+│     ├─ POST /readings/ocr - OCR image upload               │
+│     ├─ POST /readings/import - Excel import                │
+│     ├─ GET /consumption - calculated consumption           │
+│     └─ GET /settings - meter settings                      │
+│                                                             │
+│  Services:                                                  │
+│  ├─ ocr.service.ts (Tesseract OCR)                         │
+│  ├─ excel-import.service.ts (xlsx parsing)                 │
+│  └─ consumption-calculator.service.ts                      │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                      Prisma ORM
+                           │
+┌─────────────────────────────────────────────────────────────┐
+│                PostgreSQL Database                          │
+├─────────────────────────────────────────────────────────────┤
+│  TimeEntry (existing)                                       │
+│  ProjectEstimate (existing)                                 │
+│  EstimateProject (existing)                                 │
+│  MeterReading (NEW)                                         │
+│  ├─ id, meterType, readingDate, value                      │
+│  ├─ createdAt, source (manual/ocr/import)                  │
+│  └─ metadata (OCR confidence, import file)                 │
+│  MeterSettings (NEW)                                        │
+│  └─ meterType, unitCost, enabled                           │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### JWT-Based Authentication
+## Component Responsibilities
 
-**Flow:**
-1. User runs: `timetracker login`
-2. CLI prompts for credentials (username/password or API key)
-3. CLI sends POST to `/api/auth/login`
-4. Backend validates and returns JWT access + refresh tokens
-5. CLI stores tokens in config file: `~/.timetracker/config.yaml`
-6. Subsequent requests include: `Authorization: Bearer <token>`
+| Component | Responsibility | Typical Implementation |
+|-----------|---------------|------------------------|
+| **Frontend: Utilities.tsx** | Main page container, navigation, data fetching | Similar to Estimates.tsx pattern |
+| **Frontend: MeterReadingsList** | Display readings table with CRUD actions | Similar to time entries table |
+| **Frontend: ManualEntryForm** | Form for manual meter value input | Modal pattern like EditModal |
+| **Frontend: OCRCapture** | Camera/upload UI, image preview, OCR trigger | File input + canvas preview |
+| **Frontend: ExcelImportModal** | File upload, mapping preview, import trigger | Similar to CSV upload pattern |
+| **Frontend: UtilityChartGrid** | Container for 7 chart types with type selector | Tab/dropdown selector + responsive grid |
+| **Frontend: UtilitySettings** | Per-meter settings (costs, enabled status) | Form similar to estimate modal |
+| **Backend: utility.routes.ts** | RESTful endpoints for meter readings | FastifyInstance plugin pattern |
+| **Backend: ocr.service.ts** | Image processing and text extraction | Tesseract.js wrapper |
+| **Backend: excel-import.service.ts** | Parse XLSX, validate, transform to readings | xlsx library wrapper |
+| **Backend: consumption-calculator.service.ts** | Calculate consumption from sequential readings | Pure function: readings → consumption |
 
-**Token Structure:**
+## Recommended Project Structure
+
+### Backend additions:
+```
+backend/src/
+├── routes/
+│   └── utility.routes.ts              # NEW: All utility meter endpoints
+├── services/
+│   ├── ocr.service.ts                 # NEW: OCR processing
+│   ├── excel-import.service.ts        # NEW: Excel parsing
+│   └── consumption-calculator.service.ts  # NEW: Consumption logic
+├── schemas/
+│   ├── meter-reading.schema.ts        # NEW: Zod validation
+│   └── meter-settings.schema.ts       # NEW: Settings validation
+└── types/
+    └── meter.types.ts                 # NEW: Shared types
+```
+
+### Frontend additions:
+```
+frontend/src/
+├── pages/
+│   └── Utilities.tsx                  # NEW: Main utilities page
+├── components/
+│   ├── meters/
+│   │   ├── MeterReadingsList.tsx     # NEW: Readings table
+│   │   ├── ManualEntryForm.tsx       # NEW: Manual input modal
+│   │   ├── OCRCapture.tsx            # NEW: OCR capture UI
+│   │   ├── ExcelImportModal.tsx      # NEW: Excel import
+│   │   ├── UtilityChartGrid.tsx      # NEW: Chart container
+│   │   ├── charts/
+│   │   │   ├── YearOverYearChart.tsx # NEW: Comparison bars
+│   │   │   ├── TrendChart.tsx        # NEW: Line with trend
+│   │   │   ├── CumulativeChart.tsx   # NEW: Cumulative area
+│   │   │   ├── AnomalyChart.tsx      # NEW: Scatter with alerts
+│   │   │   ├── CostOverlayChart.tsx  # NEW: Bars + cost line
+│   │   │   ├── SeasonalHeatmap.tsx   # NEW: Calendar heatmap
+│   │   │   └── ForecastChart.tsx     # NEW: Historical + projection
+│   │   └── UtilitySettings.tsx       # NEW: Settings modal
+└── lib/
+    └── meter-calculations.ts          # NEW: Client-side calculations
+```
+
+## Architectural Patterns
+
+### Pattern 1: Provider Abstraction (DO NOT USE for meters)
+
+**What:** The time tracking feature uses a provider pattern (TogglProvider, TempoProvider) for external sync.
+
+**Decision:** Utility meters DO NOT need this pattern because:
+- No external API sync (all data entry is local: manual, OCR, Excel)
+- Three meter types share identical schema (no source-specific logic)
+- Simpler CRUD operations without sync/cache complexity
+
+**Instead:** Use direct Prisma access in routes with a simple `meterType` discriminator field.
+
+### Pattern 2: Service Layer for Complex Operations
+
+**What:** Extract complex business logic into dedicated service files.
+
+**When:** Use for:
+- OCR processing (multi-step: upload, preprocess, extract, validate)
+- Excel import (multi-step: parse, validate schema, transform, bulk insert)
+- Consumption calculation (algorithm: sort readings, calculate deltas, handle rollovers)
+
+**Example:**
 ```typescript
-// Access Token (short-lived: 15 minutes)
-interface AccessToken {
-  userId: string;
-  tenantId?: string;  // For multi-tenant
-  iat: number;
-  exp: number;
+// consumption-calculator.service.ts
+export interface ConsumptionResult {
+  period: { start: Date; end: Date };
+  consumption: number;
+  cost?: number;
 }
 
-// Refresh Token (long-lived: 30 days)
-interface RefreshToken {
-  userId: string;
-  sessionId: string;
-  iat: number;
-  exp: number;
-}
-```
-
-**Backend Implementation (Fastify):**
-```typescript
-// src/plugins/auth.ts
-import fp from 'fastify-plugin';
-import jwt from '@fastify/jwt';
-
-export default fp(async (fastify) => {
-  fastify.register(jwt, {
-    secret: process.env.JWT_SECRET!,
-    sign: {
-      expiresIn: '15m'  // Access token
-    }
-  });
-
-  fastify.decorate('authenticate', async (request, reply) => {
-    try {
-      await request.jwtVerify();
-    } catch (err) {
-      reply.code(401).send({ error: 'Unauthorized' });
-    }
-  });
-});
-
-// Usage in routes
-fastify.get('/api/entries', {
-  preHandler: [fastify.authenticate]
-}, async (request, reply) => {
-  const userId = request.user.userId;
-  // Query entries for this user
-});
-```
-
-**Sources:**
-- [JWT Authentication in REST APIs](https://blog.logrocket.com/secure-rest-api-jwt-authentication/)
-- [CLI JWT Authentication Patterns](https://dev.to/devdevgo/how-to-implement-jwt-authentication-in-command-line-applications-4dp0)
-
-### Configuration File Storage
-
-**AWS CLI-style profile pattern:**
-
-```yaml
-# ~/.timetracker/config.yaml
-profiles:
-  default:
-    api_url: http://localhost:3000
-    access_token: eyJhbGc...
-    refresh_token: eyJhbGc...
-    token_expires_at: "2026-01-19T12:00:00Z"
-
-  production:
-    api_url: https://api.timetracker.com
-    access_token: eyJhbGc...
-    refresh_token: eyJhbGc...
-    token_expires_at: "2026-01-19T12:00:00Z"
-
-current_profile: default
-```
-
-**Go implementation:**
-```go
-// internal/config/config.go
-package config
-
-import (
-    "os"
-    "path/filepath"
-    "gopkg.in/yaml.v3"
-)
-
-type Config struct {
-    Profiles       map[string]Profile `yaml:"profiles"`
-    CurrentProfile string             `yaml:"current_profile"`
-}
-
-type Profile struct {
-    ApiURL          string `yaml:"api_url"`
-    AccessToken     string `yaml:"access_token"`
-    RefreshToken    string `yaml:"refresh_token"`
-    TokenExpiresAt  string `yaml:"token_expires_at"`
-}
-
-func Load() (*Config, error) {
-    home, _ := os.UserHomeDir()
-    configPath := filepath.Join(home, ".timetracker", "config.yaml")
-
-    data, err := os.ReadFile(configPath)
-    if err != nil {
-        return &Config{}, nil  // Return empty config if not exists
-    }
-
-    var cfg Config
-    if err := yaml.Unmarshal(data, &cfg); err != nil {
-        return nil, err
-    }
-
-    return &cfg, nil
-}
-
-func (c *Config) Save() error {
-    home, _ := os.UserHomeDir()
-    configDir := filepath.Join(home, ".timetracker")
-
-    // Create directory with secure permissions
-    if err := os.MkdirAll(configDir, 0700); err != nil {
-        return err
-    }
-
-    configPath := filepath.Join(configDir, "config.yaml")
-    data, _ := yaml.Marshal(c)
-
-    // Write with secure permissions (0600 = rw-------)
-    return os.WriteFile(configPath, data, 0600)
-}
-```
-
-**Security considerations:**
-- File permissions: `0600` (read/write for user only)
-- Never commit config files
-- Refresh token rotation on use
-- Automatic token refresh before expiry
-
-**Sources:**
-- [AWS CLI-Style JWT Authentication](https://hoop.dev/blog/aws-cli-style-profiles-for-jwt-based-authentication/)
-- [Go Configuration Best Practices](https://www.jetbrains.com/guide/go/tutorials/authentication-for-go-apps/auth/)
-
-### API Client Pattern
-
-**Go REST client with automatic retry and refresh:**
-
-```go
-// internal/api/client.go
-package api
-
-import (
-    "bytes"
-    "encoding/json"
-    "net/http"
-    "time"
-)
-
-type Client struct {
-    baseURL      string
-    httpClient   *http.Client
-    config       *config.Config
-    accessToken  string
-    refreshToken string
-}
-
-func NewClient(cfg *config.Config) *Client {
-    profile := cfg.Profiles[cfg.CurrentProfile]
-    return &Client{
-        baseURL:      profile.ApiURL,
-        httpClient:   &http.Client{Timeout: 30 * time.Second},
-        config:       cfg,
-        accessToken:  profile.AccessToken,
-        refreshToken: profile.RefreshToken,
-    }
-}
-
-func (c *Client) Do(req *http.Request) (*http.Response, error) {
-    // Add auth header
-    req.Header.Set("Authorization", "Bearer "+c.accessToken)
-    req.Header.Set("Content-Type", "application/json")
-
-    resp, err := c.httpClient.Do(req)
-
-    // If 401, try to refresh token
-    if resp != nil && resp.StatusCode == 401 {
-        if err := c.refreshAccessToken(); err != nil {
-            return nil, err
-        }
-        // Retry with new token
-        req.Header.Set("Authorization", "Bearer "+c.accessToken)
-        return c.httpClient.Do(req)
-    }
-
-    return resp, err
-}
-
-func (c *Client) refreshAccessToken() error {
-    req, _ := http.NewRequest("POST", c.baseURL+"/api/auth/refresh",
-        bytes.NewBuffer([]byte(`{"refresh_token":"`+c.refreshToken+`"}`)))
-
-    resp, err := c.httpClient.Do(req)
-    if err != nil {
-        return err
-    }
-    defer resp.Body.Close()
-
-    var result struct {
-        AccessToken  string `json:"access_token"`
-        RefreshToken string `json:"refresh_token"`
-    }
-    json.NewDecoder(resp.Body).Decode(&result)
-
-    c.accessToken = result.AccessToken
-    c.refreshToken = result.RefreshToken
-
-    // Update config file
-    profile := c.config.Profiles[c.config.CurrentProfile]
-    profile.AccessToken = result.AccessToken
-    profile.RefreshToken = result.RefreshToken
-    c.config.Save()
-
-    return nil
-}
-
-// High-level methods
-func (c *Client) GetEntries(start, end time.Time) ([]Entry, error) {
-    req, _ := http.NewRequest("GET",
-        c.baseURL+"/api/entries?start="+start.Format("2006-01-02")+
-        "&end="+end.Format("2006-01-02"), nil)
-
-    resp, err := c.Do(req)
-    if err != nil {
-        return nil, err
-    }
-    defer resp.Body.Close()
-
-    var entries []Entry
-    json.NewDecoder(resp.Body).Decode(&entries)
-    return entries, nil
-}
-```
-
-**Features:**
-- Automatic token refresh on 401
-- Retry logic with exponential backoff
-- Type-safe request/response handling
-- Connection pooling via http.Client
-
----
-
-## 3. Provider Abstraction Pattern
-
-### Current State Analysis
-
-**Existing code has partial abstraction:**
-- ✅ `ImportAdapter` interface for CSV imports (TogglCSVAdapter, TempoCSVAdapter)
-- ❌ No interface for API sources (TogglService, TempoService are concrete classes)
-- ❌ Duplication: Each service has similar sync logic (cache, API fetch, upsert)
-- ❌ Hard to extend: Adding Clockify requires copying entire service pattern
-
-### Recommended Architecture: Unified Adapter Pattern
-
-```
-┌─────────────────────────────────────────────┐
-│           TimeEntryController               │
-│  (Routes: POST /sync, GET /entries)         │
-└────────────────┬────────────────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────────────────┐
-│         ProviderSyncService                 │
-│  - sync(provider, options)                  │
-│  - syncAll(options)                         │
-└────────────────┬────────────────────────────┘
-                 │
-                 ▼
-┌─────────────────────────────────────────────┐
-│           ProviderFactory                   │
-│  - getProvider(name): Provider              │
-└────────────────┬────────────────────────────┘
-                 │
-         ┌───────┴───────────────────┐
-         ▼                           ▼
-┌──────────────────┐      ┌──────────────────┐
-│  TogglProvider   │      │  TempoProvider   │
-│  ClockifyProvider│      │  CSVProvider     │
-└──────────────────┘      └──────────────────┘
-         │                           │
-         └──────────┬────────────────┘
-                    ▼
-          ┌──────────────────┐
-          │   Provider       │
-          │   Interface      │
-          └──────────────────┘
-```
-
-### Provider Interface
-
-```typescript
-// src/providers/provider.interface.ts
-export interface TimeEntryRaw {
-  externalId: string;
-  date: Date;
-  durationSeconds: number;
-  project?: string;
-  description?: string;
-  metadata?: Record<string, any>;  // Provider-specific data
-}
-
-export interface SyncOptions {
-  startDate?: Date;
-  endDate?: Date;
-  forceRefresh?: boolean;
-  userId?: string;  // For multi-tenant
-}
-
-export interface SyncResult {
-  provider: string;
-  entriesCount: number;
-  cached: boolean;
-  errors?: string[];
-}
-
-export interface Provider {
-  readonly name: string;  // "toggl" | "tempo" | "clockify" | "csv"
-
-  /**
-   * Fetch raw entries from provider
-   * Handles authentication, pagination, caching
-   */
-  fetchEntries(options: SyncOptions): Promise<TimeEntryRaw[]>;
-
-  /**
-   * Validate provider configuration
-   * Returns error message if invalid, null if valid
-   */
-  validateConfig(): Promise<string | null>;
-
-  /**
-   * Test connection to provider API
-   */
-  testConnection(): Promise<boolean>;
-}
-```
-
-### Concrete Provider Implementation
-
-```typescript
-// src/providers/toggl.provider.ts
-import axios from 'axios';
-import { Provider, TimeEntryRaw, SyncOptions } from './provider.interface';
-import { CacheManager } from './cache-manager';
-
-export class TogglProvider implements Provider {
-  readonly name = 'toggl';
-
-  private apiToken: string;
-  private cache: CacheManager;
-
-  constructor(apiToken: string, cache: CacheManager) {
-    this.apiToken = apiToken;
-    this.cache = cache;
-  }
-
-  async fetchEntries(options: SyncOptions): Promise<TimeEntryRaw[]> {
-    const { startDate, endDate, forceRefresh } = options;
-
-    // Check cache first
-    if (!forceRefresh) {
-      const cached = await this.cache.get(this.name, { startDate, endDate });
-      if (cached) return cached;
-    }
-
-    // Fetch from API
-    const entries = await this.fetchFromAPI(startDate, endDate);
-
-    // Transform to unified format
-    const normalized = entries.map(entry => this.normalize(entry));
-
-    // Cache result
-    await this.cache.set(this.name, { startDate, endDate }, normalized);
-
-    return normalized;
-  }
-
-  private async fetchFromAPI(start?: Date, end?: Date): Promise<any[]> {
-    const startDate = start || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
-    const endDate = end || new Date();
-
-    const response = await axios.get(
-      'https://api.track.toggl.com/api/v9/me/time_entries',
-      {
-        params: {
-          start_date: startDate.toISOString().split('T')[0],
-          end_date: endDate.toISOString().split('T')[0]
-        },
-        headers: {
-          Authorization: `Basic ${Buffer.from(`${this.apiToken}:api_token`).toString('base64')}`
-        }
-      }
-    );
-
-    return response.data.filter(e => e.duration > 0);
-  }
-
-  private normalize(entry: any): TimeEntryRaw {
-    return {
-      externalId: entry.id.toString(),
-      date: new Date(entry.start),
-      durationSeconds: entry.duration,
-      project: entry.project_id ? `Project-${entry.project_id}` : undefined,
-      description: entry.description,
-      metadata: {
-        tags: entry.tags,
-        billable: entry.billable
-      }
-    };
-  }
-
-  async validateConfig(): Promise<string | null> {
-    if (!this.apiToken || this.apiToken.length < 10) {
-      return 'Invalid Toggl API token';
-    }
-    return null;
-  }
-
-  async testConnection(): Promise<boolean> {
-    try {
-      await axios.get('https://api.track.toggl.com/api/v9/me', {
-        headers: {
-          Authorization: `Basic ${Buffer.from(`${this.apiToken}:api_token`).toString('base64')}`
-        }
-      });
-      return true;
-    } catch {
-      return false;
-    }
-  }
-}
-```
-
-### Provider Factory
-
-```typescript
-// src/providers/provider.factory.ts
-import { Provider } from './provider.interface';
-import { TogglProvider } from './toggl.provider';
-import { TempoProvider } from './tempo.provider';
-import { ClockifyProvider } from './clockify.provider';
-import { CacheManager } from './cache-manager';
-
-export class ProviderFactory {
-  private cache: CacheManager;
-
-  constructor(cache: CacheManager) {
-    this.cache = cache;
-  }
-
-  getProvider(name: string): Provider {
-    switch (name.toLowerCase()) {
-      case 'toggl':
-        const togglToken = process.env.TOGGL_API_TOKEN;
-        if (!togglToken) throw new Error('TOGGL_API_TOKEN not configured');
-        return new TogglProvider(togglToken, this.cache);
-
-      case 'tempo':
-        const tempoToken = process.env.TEMPO_API_TOKEN;
-        if (!tempoToken) throw new Error('TEMPO_API_TOKEN not configured');
-        return new TempoProvider(tempoToken, this.cache);
-
-      case 'clockify':
-        const clockifyToken = process.env.CLOCKIFY_API_TOKEN;
-        if (!clockifyToken) throw new Error('CLOCKIFY_API_TOKEN not configured');
-        return new ClockifyProvider(clockifyToken, this.cache);
-
-      default:
-        throw new Error(`Unknown provider: ${name}`);
-    }
-  }
-
-  getAllProviders(): Provider[] {
-    const providers: Provider[] = [];
-
-    if (process.env.TOGGL_API_TOKEN) {
-      providers.push(this.getProvider('toggl'));
-    }
-    if (process.env.TEMPO_API_TOKEN) {
-      providers.push(this.getProvider('tempo'));
-    }
-    if (process.env.CLOCKIFY_API_TOKEN) {
-      providers.push(this.getProvider('clockify'));
-    }
-
-    return providers;
-  }
-}
-```
-
-### Provider Sync Service (Orchestrator)
-
-```typescript
-// src/services/provider-sync.service.ts
-import { PrismaClient } from '@prisma/client';
-import { ProviderFactory } from '../providers/provider.factory';
-import { Provider, SyncOptions, SyncResult } from '../providers/provider.interface';
-
-export class ProviderSyncService {
-  constructor(
-    private prisma: PrismaClient,
-    private factory: ProviderFactory
-  ) {}
-
-  async syncProvider(providerName: string, options: SyncOptions): Promise<SyncResult> {
-    const provider = this.factory.getProvider(providerName);
-
-    // Validate configuration
-    const configError = await provider.validateConfig();
-    if (configError) {
-      throw new Error(`Provider configuration invalid: ${configError}`);
-    }
-
-    // Fetch entries
-    const entries = await provider.fetchEntries(options);
-
-    // Upsert to database
-    let count = 0;
-    const errors: string[] = [];
-
-    for (const entry of entries) {
-      try {
-        await this.prisma.timeEntry.upsert({
-          where: {
-            source_externalId: {
-              source: provider.name.toUpperCase(),
-              externalId: entry.externalId
-            }
-          },
-          update: {
-            date: entry.date,
-            duration: entry.durationSeconds / 3600,
-            project: entry.project,
-            description: entry.description
-          },
-          create: {
-            source: provider.name.toUpperCase(),
-            externalId: entry.externalId,
-            date: entry.date,
-            duration: entry.durationSeconds / 3600,
-            project: entry.project,
-            description: entry.description
-          }
-        });
-        count++;
-      } catch (error) {
-        errors.push(`Failed to upsert entry ${entry.externalId}: ${error}`);
-      }
-    }
-
-    return {
-      provider: provider.name,
-      entriesCount: count,
-      cached: entries.length > 0 && !options.forceRefresh,
-      errors: errors.length > 0 ? errors : undefined
-    };
-  }
-
-  async syncAll(options: SyncOptions): Promise<SyncResult[]> {
-    const providers = this.factory.getAllProviders();
-
-    // Sync in parallel
-    const results = await Promise.all(
-      providers.map(p => this.syncProvider(p.name, options))
-    );
-
-    return results;
-  }
-}
-```
-
-### Cache Manager (Shared)
-
-```typescript
-// src/providers/cache-manager.ts
-import fs from 'fs/promises';
-import path from 'path';
-import crypto from 'crypto';
-
-interface CacheEntry<T> {
-  data: T;
-  timestamp: number;
-  ttl: number;
-}
-
-export class CacheManager {
-  private cacheDir: string;
-  private defaultTTL: number;
-
-  constructor(cacheDir: string = './cache', defaultTTL: number = 10 * 60 * 1000) {
-    this.cacheDir = cacheDir;
-    this.defaultTTL = defaultTTL;
-  }
-
-  async get<T>(provider: string, key: any): Promise<T | null> {
-    const cacheKey = this.generateKey(provider, key);
-    const cachePath = path.join(this.cacheDir, `${cacheKey}.json`);
-
-    try {
-      const data = await fs.readFile(cachePath, 'utf-8');
-      const entry: CacheEntry<T> = JSON.parse(data);
-
-      // Check if expired
-      if (Date.now() - entry.timestamp > entry.ttl) {
-        await this.delete(provider, key);
-        return null;
-      }
-
-      return entry.data;
-    } catch {
-      return null;
-    }
-  }
-
-  async set<T>(provider: string, key: any, data: T, ttl?: number): Promise<void> {
-    const cacheKey = this.generateKey(provider, key);
-    const cachePath = path.join(this.cacheDir, `${cacheKey}.json`);
-
-    const entry: CacheEntry<T> = {
-      data,
-      timestamp: Date.now(),
-      ttl: ttl || this.defaultTTL
-    };
-
-    await fs.mkdir(this.cacheDir, { recursive: true });
-    await fs.writeFile(cachePath, JSON.stringify(entry, null, 2));
-  }
-
-  async delete(provider: string, key: any): Promise<void> {
-    const cacheKey = this.generateKey(provider, key);
-    const cachePath = path.join(this.cacheDir, `${cacheKey}.json`);
-
-    try {
-      await fs.unlink(cachePath);
-    } catch {
-      // Ignore if file doesn't exist
-    }
-  }
-
-  private generateKey(provider: string, key: any): string {
-    const keyString = JSON.stringify({ provider, ...key });
-    return crypto.createHash('sha256').update(keyString).digest('hex');
-  }
-}
-```
-
-### Benefits of This Architecture
-
-**Extensibility:** Adding Clockify requires implementing one class, no changes to existing code
-**Testability:** Each provider can be unit tested in isolation with mocked API responses
-**Maintainability:** Shared logic (caching, error handling) in base classes/utilities
-**Type Safety:** TypeScript interfaces ensure all providers implement required methods
-**DRY Principle:** No duplication of sync logic across providers
-
-**Sources:**
-- [Adapter Pattern for Third-Party Integrations](https://medium.com/@olorondu_emeka/adapter-design-pattern-a-guide-to-manage-multiple-third-party-integrations-dc342f435daf)
-- [Strategy Pattern in TypeScript](https://medium.com/@robinviktorsson/a-guide-to-the-strategy-design-pattern-in-typescript-and-node-js-with-practical-examples-c3d6984a2050)
-- [Gateway Aggregation Pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/gateway-aggregation)
-
----
-
-## 4. Multi-Tenant Architecture Path
-
-### Migration Strategy: Single-User → Multi-Tenant
-
-```
-Phase 1: Single-User (Current)
-├── SQLite database
-├── No user/tenant concept
-└── Direct API access
-
-Phase 2: User-Aware (Preparation)
-├── Add userId to schema
-├── JWT authentication
-├── User-scoped queries
-└── Still SQLite
-
-Phase 3: Multi-Tenant Foundation
-├── Add tenantId to schema
-├── Migrate to PostgreSQL
-├── Basic tenant isolation (WHERE tenantId = ?)
-└── Tenant-scoped API tokens
-
-Phase 4: Production Multi-Tenant
-├── PostgreSQL Row-Level Security
-├── Separate schemas per tenant (optional)
-├── Tenant-specific rate limiting
-└── Admin/tenant dashboards
-```
-
-### Database Schema Evolution
-
-**Phase 2: User-Aware**
-```prisma
-model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String   // Hashed
-  createdAt DateTime @default(now())
-
-  entries   TimeEntry[]
-  apiTokens ApiToken[]
-}
-
-model TimeEntry {
-  id          String   @id @default(uuid())
-  userId      String   // NEW
-  user        User     @relation(fields: [userId], references: [id])
-
-  source      String
-  externalId  String?
-  date        DateTime
-  duration    Float
-  project     String?
-  description String?
-  createdAt   DateTime @default(now())
-
-  @@unique([source, externalId, userId])  // User-scoped uniqueness
-  @@index([date, userId])
-}
-
-model ApiToken {
-  id          String   @id @default(uuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-
-  provider    String   // "toggl" | "tempo" | "clockify"
-  token       String   // Encrypted
-  createdAt   DateTime @default(now())
-  lastUsedAt  DateTime?
-
-  @@unique([userId, provider])
-}
-```
-
-**Phase 3: Multi-Tenant Foundation**
-```prisma
-model Tenant {
-  id        String   @id @default(uuid())
-  name      String
-  slug      String   @unique  // "acme-corp"
-  plan      String   @default("free")  // "free" | "pro" | "enterprise"
-  createdAt DateTime @default(now())
-
-  users     User[]
-  entries   TimeEntry[]
-}
-
-model User {
-  id        String   @id @default(uuid())
-  tenantId  String   // NEW
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-
-  email     String
-  password  String
-  role      String   @default("member")  // "owner" | "admin" | "member"
-  createdAt DateTime @default(now())
-
-  entries   TimeEntry[]
-
-  @@unique([email, tenantId])  // Email unique per tenant
-  @@index([tenantId])
-}
-
-model TimeEntry {
-  id          String   @id @default(uuid())
-  tenantId    String   // NEW - for RLS
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-
-  source      String
-  externalId  String?
-  date        DateTime
-  duration    Float
-  project     String?
-  description String?
-  createdAt   DateTime @default(now())
-
-  @@unique([source, externalId, tenantId])
-  @@index([date, tenantId, userId])
-  @@index([tenantId])  // For RLS queries
-}
-```
-
-**Phase 4: PostgreSQL Row-Level Security**
-```sql
--- Enable RLS on time_entries table
-ALTER TABLE "TimeEntry" ENABLE ROW LEVEL SECURITY;
-
--- Policy: Users can only see entries from their tenant
-CREATE POLICY tenant_isolation_policy ON "TimeEntry"
-  USING (
-    "tenantId" = current_setting('app.current_tenant_id')::text
+export function calculateConsumption(
+  readings: MeterReading[],
+  unitCost?: number
+): ConsumptionResult[] {
+  const sorted = readings.sort((a, b) =>
+    a.readingDate.getTime() - b.readingDate.getTime()
   );
 
--- Policy: Users can only insert entries for their tenant
-CREATE POLICY tenant_insert_policy ON "TimeEntry"
-  FOR INSERT
-  WITH CHECK (
-    "tenantId" = current_setting('app.current_tenant_id')::text
-  );
+  return sorted.slice(1).map((current, i) => {
+    const previous = sorted[i];
+    let consumption = current.value - previous.value;
 
--- Function to set tenant context
-CREATE OR REPLACE FUNCTION set_tenant_context(tenant_id TEXT)
-RETURNS void AS $$
-BEGIN
-  PERFORM set_config('app.current_tenant_id', tenant_id, false);
-END;
-$$ LANGUAGE plpgsql;
-```
-
-**Backend middleware for RLS:**
-```typescript
-// src/plugins/tenant-context.ts
-import fp from 'fastify-plugin';
-
-export default fp(async (fastify) => {
-  fastify.addHook('onRequest', async (request, reply) => {
-    if (request.user?.tenantId) {
-      // Set PostgreSQL session variable for RLS
-      await fastify.prisma.$executeRaw`
-        SELECT set_tenant_context(${request.user.tenantId})
-      `;
+    // Handle meter rollover (e.g., 99999 → 00001)
+    if (consumption < 0) {
+      const maxValue = 999999; // meter-specific
+      consumption = (maxValue - previous.value) + current.value;
     }
-  });
-});
-```
 
-**Sources:**
-- [PostgreSQL RLS for Multi-Tenant SaaS](https://www.techbuddies.io/2026/01/01/how-to-implement-postgresql-row-level-security-for-multi-tenant-saas/)
-- [Multi-Tenant Database Patterns](https://www.bytebase.com/blog/multi-tenant-database-architecture-patterns-explained/)
-- [AWS Multi-Tenant RLS Implementation](https://aws.amazon.com/blogs/database/multi-tenant-data-isolation-with-postgresql-row-level-security/)
-
-### Tenant Isolation Patterns
-
-**Three approaches for data isolation:**
-
-| Pattern | Description | Pros | Cons | Best For |
-|---------|-------------|------|------|----------|
-| **Shared Database, Shared Schema** | All tenants share tables, filtered by `tenantId` column | Simple, cost-effective, easy scaling | Weak isolation, accidental data leaks possible, complex queries | Early-stage SaaS, <100 tenants |
-| **Shared Database, Schema per Tenant** | Each tenant gets own schema in same database | Better isolation, customizable schema | Migration complexity, schema drift risk | Mid-stage SaaS, 100-1000 tenants |
-| **Database per Tenant** | Each tenant gets dedicated database | Maximum isolation, per-tenant backups | Expensive, complex migrations, resource intensive | Enterprise, regulated industries, >1000 tenants |
-
-**Recommendation for time tracker:** Start with Shared Database/Shared Schema + RLS, migrate to Schema per Tenant if >500 tenants or compliance requires.
-
-### API Authentication Changes
-
-**Single-User (Current):**
-```
-GET /api/entries
-→ Returns all entries
-```
-
-**Multi-Tenant:**
-```
-GET /api/entries
-Authorization: Bearer <jwt>
-→ JWT contains: { userId: "...", tenantId: "..." }
-→ Returns entries WHERE tenantId = jwt.tenantId AND userId = jwt.userId
-```
-
-**Tenant switching for admins:**
-```typescript
-interface JWTPayload {
-  userId: string;
-  tenantId: string;
-  role: "owner" | "admin" | "member";
-  impersonatedBy?: string;  // For admin impersonation
-}
-
-// Admin can impersonate user
-POST /api/admin/impersonate
-{
-  "targetUserId": "user-123"
-}
-→ Returns new JWT with impersonatedBy set
-```
-
-### Migration Checklist
-
-- [ ] Phase 2: Add userId to TimeEntry, implement authentication
-- [ ] Phase 2: Migrate existing entries to a default user
-- [ ] Phase 2: Update all queries to filter by userId
-- [ ] Phase 3: Add Tenant model, migrate to PostgreSQL
-- [ ] Phase 3: Update schema to include tenantId
-- [ ] Phase 3: Add tenant context to all requests
-- [ ] Phase 3: Implement tenant signup/management
-- [ ] Phase 4: Enable PostgreSQL RLS policies
-- [ ] Phase 4: Add tenant isolation tests
-- [ ] Phase 4: Implement tenant-scoped rate limiting
-- [ ] Phase 4: Add admin tenant management dashboard
-
-**Critical:** Each phase should be deployed and validated before proceeding to next.
-
----
-
-## 5. Component Boundaries
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Presentation Layer                    │
-├──────────────────────┬──────────────────────────────────────┤
-│  React Frontend      │  Go CLI                              │
-│  (Port 5173/80)      │  (Local binary)                      │
-└──────────────────────┴──────────────────────────────────────┘
-                                │
-                                ▼ HTTPS/JSON
-┌─────────────────────────────────────────────────────────────┐
-│                        API Gateway Layer                     │
-├─────────────────────────────────────────────────────────────┤
-│  Fastify Routes                                             │
-│  - Authentication Middleware                                │
-│  - Tenant Context Middleware                                │
-│  - Rate Limiting                                            │
-│  - Request Validation                                       │
-└─────────────────────────────────────────────────────────────┘
-                                │
-                    ┌───────────┴───────────┐
-                    ▼                       ▼
-┌──────────────────────────────┐ ┌──────────────────────────┐
-│  Business Logic Layer        │ │  Provider Layer          │
-├──────────────────────────────┤ ├──────────────────────────┤
-│  Services:                   │ │  ProviderFactory         │
-│  - ProviderSyncService       │ │  Implementations:        │
-│  - TimeEntryService          │ │  - TogglProvider         │
-│  - UserService               │ │  - TempoProvider         │
-│  - TenantService             │ │  - ClockifyProvider      │
-└──────────────────────────────┘ └──────────────────────────┘
-                    │                       │
-                    └───────────┬───────────┘
-                                ▼
-┌─────────────────────────────────────────────────────────────┐
-│                        Data Access Layer                     │
-├─────────────────────────────────────────────────────────────┤
-│  Prisma ORM                                                 │
-│  - Models (User, Tenant, TimeEntry, ApiToken)              │
-│  - Migrations                                               │
-│  - Query Builder                                            │
-└─────────────────────────────────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────┐
-│                        Data Storage Layer                    │
-├─────────────────────────────────────────────────────────────┤
-│  PostgreSQL (Production)                                    │
-│  SQLite (Development)                                       │
-│  - Row-Level Security (PostgreSQL only)                     │
-│  - Indexes for performance                                  │
-└─────────────────────────────────────────────────────────────┘
-
-External Dependencies:
-┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-│ Toggl API   │  │ Tempo API   │  │ Clockify API│
-└─────────────┘  └─────────────┘  └─────────────┘
-```
-
-### Responsibility Matrix
-
-| Component | Responsibilities | Does NOT Handle |
-|-----------|------------------|-----------------|
-| **Frontend** | UI rendering, client-side validation, user interactions, API calls | Authentication logic, business rules, direct database access |
-| **Go CLI** | Terminal UI, config management, local caching, API calls | Business logic, database access, provider integration |
-| **API Gateway** | Routing, authentication, authorization, rate limiting, request validation | Business logic, data transformation, provider specifics |
-| **ProviderSyncService** | Orchestrate sync, coordinate providers, handle errors | Provider-specific API calls, caching, normalization |
-| **Provider Implementations** | Fetch from external API, normalize data, cache responses | Database upsert, tenant logic, authentication |
-| **Prisma ORM** | Database queries, migrations, type generation | Business logic, validation, authorization |
-| **PostgreSQL** | Data persistence, RLS enforcement, transactions | Application logic, API integration |
-
----
-
-## 6. Anti-Patterns to Avoid
-
-### Anti-Pattern 1: Direct Database Access from Frontend
-**What:** Frontend directly connects to database (even in development)
-**Why bad:** Security risk, no authorization layer, bypasses business logic
-**Instead:** Always route through REST API, even in development
-
-### Anti-Pattern 2: Mixing Provider Logic with Database Logic
-**What:** Provider classes directly upsert to database (current code does this)
-**Why bad:** Tight coupling, hard to test, duplicated upsert logic
-**Instead:** Providers return normalized data, service layer handles persistence
-
-Example refactor:
-```typescript
-// ❌ BAD: Provider directly upserts
-class TogglProvider {
-  async sync() {
-    const entries = await this.fetchFromAPI();
-    for (const entry of entries) {
-      await prisma.timeEntry.upsert(...);  // TIGHT COUPLING
-    }
-  }
-}
-
-// ✅ GOOD: Provider returns data, service persists
-class TogglProvider {
-  async fetchEntries(): Promise<TimeEntryRaw[]> {
-    const entries = await this.fetchFromAPI();
-    return entries.map(e => this.normalize(e));
-  }
-}
-
-class ProviderSyncService {
-  async syncProvider(provider: Provider) {
-    const entries = await provider.fetchEntries();
-    await this.persistEntries(entries);  // SINGLE RESPONSIBILITY
-  }
-}
-```
-
-### Anti-Pattern 3: SQLite in Production
-**What:** Deploying SQLite database to production for multi-user system
-**Why bad:**
-- No concurrent writes (locking issues)
-- No RLS support
-- File-based, poor for containerized environments
-- Difficult backups/replication
-**Instead:** Use PostgreSQL for production, SQLite only for local dev
-
-### Anti-Pattern 4: Storing Plain Text Secrets in Config
-**What:** CLI config file stores API tokens unencrypted
-**Why bad:** Tokens visible if file leaked, no protection at rest
-**Instead:** Use OS keychain/credential store
-
-```go
-// ✅ GOOD: Use OS keychain
-import "github.com/zalando/go-keyring"
-
-func saveToken(token string) error {
-    return keyring.Set("timetracker", "api-token", token)
-}
-
-func loadToken() (string, error) {
-    return keyring.Get("timetracker", "api-token")
-}
-```
-
-### Anti-Pattern 5: No Tenant Context Validation
-**What:** Trust JWT payload without server-side validation
-**Why bad:** Token tampering could access other tenants' data
-**Instead:** Always validate tenantId matches user's actual tenant
-
-```typescript
-// ❌ BAD: Trust JWT blindly
-fastify.get('/api/entries', async (request) => {
-  const tenantId = request.user.tenantId;  // From JWT, could be tampered
-  return prisma.timeEntry.findMany({ where: { tenantId } });
-});
-
-// ✅ GOOD: Validate tenant membership
-fastify.get('/api/entries', async (request) => {
-  const userId = request.user.userId;
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: { tenant: true }
-  });
-
-  if (!user || user.tenantId !== request.user.tenantId) {
-    throw new Error('Tenant mismatch');
-  }
-
-  // Let RLS handle filtering
-  return prisma.timeEntry.findMany();
-});
-```
-
-### Anti-Pattern 6: Shared Database Connection Pool for All Tenants
-**What:** Single connection pool, set tenant context per query
-**Why bad:** Context leakage between requests, race conditions
-**Instead:** Use connection pools per tenant OR enforce RLS at connection level
-
-```typescript
-// ✅ GOOD: Set tenant context at connection acquisition
-fastify.addHook('preHandler', async (request) => {
-  await request.prisma.$executeRaw`
-    SELECT set_config('app.current_tenant_id', ${request.user.tenantId}, true)
-  `;  // `true` = transaction-local
-});
-```
-
----
-
-## 7. Scalability Considerations
-
-### Horizontal Scaling Strategy
-
-```
-                    ┌──────────────┐
-                    │ Load Balancer │
-                    │  (Nginx/HAProxy) │
-                    └───────┬──────┘
-                            │
-         ┌──────────────────┼──────────────────┐
-         ▼                  ▼                  ▼
-    ┌─────────┐        ┌─────────┐        ┌─────────┐
-    │ Backend │        │ Backend │        │ Backend │
-    │ Instance│        │ Instance│        │ Instance│
-    │    1    │        │    2    │        │    3    │
-    └────┬────┘        └────┬────┘        └────┬────┘
-         └──────────────────┼──────────────────┘
-                            ▼
-                    ┌─────────────────┐
-                    │  PostgreSQL      │
-                    │  (Master + Read  │
-                    │   Replicas)      │
-                    └─────────────────┘
-```
-
-**Docker Compose Scaling:**
-```bash
-# Scale backend to 3 instances
-docker-compose up --scale backend=3
-
-# Load balancer (add to docker-compose.yml)
-nginx:
-  image: nginx:alpine
-  ports:
-    - "80:80"
-  volumes:
-    - ./nginx.conf:/etc/nginx/nginx.conf:ro
-  depends_on:
-    - backend
-```
-
-**Nginx config for load balancing:**
-```nginx
-upstream backend {
-    least_conn;  # Route to least busy instance
-    server backend:3000 max_fails=3 fail_timeout=30s;
-}
-
-server {
-    listen 80;
-
-    location /api {
-        proxy_pass http://backend;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-}
-```
-
-### Caching Strategy
-
-**Multi-level caching:**
-
-```
-Browser Cache (ETags)
-       ↓
-API Response Cache (Redis)
-       ↓
-Database Query Cache (PostgreSQL)
-       ↓
-Database
-```
-
-**Redis integration:**
-```typescript
-// src/plugins/cache.ts
-import Redis from 'ioredis';
-import fp from 'fastify-plugin';
-
-export default fp(async (fastify) => {
-  const redis = new Redis(process.env.REDIS_URL);
-
-  fastify.decorate('cache', {
-    async get(key: string) {
-      const data = await redis.get(key);
-      return data ? JSON.parse(data) : null;
-    },
-
-    async set(key: string, value: any, ttl: number = 300) {
-      await redis.setex(key, ttl, JSON.stringify(value));
-    }
-  });
-});
-
-// Usage in routes
-fastify.get('/api/entries', async (request) => {
-  const cacheKey = `entries:${request.user.tenantId}:${request.query.start}:${request.query.end}`;
-
-  let entries = await fastify.cache.get(cacheKey);
-  if (!entries) {
-    entries = await prisma.timeEntry.findMany(...);
-    await fastify.cache.set(cacheKey, entries, 300);  // 5 min cache
-  }
-
-  return entries;
-});
-```
-
-### Database Optimization
-
-**Read replicas for queries:**
-```typescript
-// Prisma supports read replicas
-const prisma = new PrismaClient({
-  datasources: {
-    db: {
-      url: process.env.DATABASE_URL  // Master (writes)
-    }
-  }
-});
-
-const prismaReadReplica = new PrismaClient({
-  datasources: {
-    db: {
-      url: process.env.DATABASE_READ_URL  // Replica (reads)
-    }
-  }
-});
-
-// Use in services
-class TimeEntryService {
-  async findMany(where) {
-    return prismaReadReplica.timeEntry.findMany({ where });  // Read from replica
-  }
-
-  async create(data) {
-    return prisma.timeEntry.create({ data });  // Write to master
-  }
-}
-```
-
-**Connection pooling:**
-```env
-# .env
-DATABASE_URL="postgresql://user:pass@localhost:5432/timetracker?connection_limit=20&pool_timeout=30"
-```
-
-### Rate Limiting
-
-**Per-tenant rate limiting:**
-```typescript
-// src/plugins/rate-limit.ts
-import rateLimit from '@fastify/rate-limit';
-
-fastify.register(rateLimit, {
-  max: 100,  // 100 requests
-  timeWindow: '1 minute',
-  keyGenerator: (request) => {
-    return request.user?.tenantId || request.ip;  // Limit per tenant
-  },
-  errorResponseBuilder: (request, context) => {
     return {
-      statusCode: 429,
-      error: 'Too Many Requests',
-      message: `Rate limit exceeded. Try again in ${Math.ceil(context.ttl / 1000)} seconds.`
+      period: { start: previous.readingDate, end: current.readingDate },
+      consumption,
+      cost: unitCost ? consumption * unitCost : undefined
     };
-  }
-});
-```
-
-### Performance Targets
-
-| Metric | Target | Critical Threshold |
-|--------|--------|-------------------|
-| API Response Time (p95) | <200ms | >500ms |
-| Database Query Time (p95) | <50ms | >200ms |
-| Provider Sync Time | <10s for 1000 entries | >30s |
-| Concurrent Users | 100 per backend instance | N/A |
-| Database Connections | 20 per instance | 100 max |
-
----
-
-## 8. Security Considerations
-
-### Authentication Security
-
-**JWT Best Practices:**
-- Short-lived access tokens (15 minutes)
-- Long-lived refresh tokens (30 days) with rotation
-- Store refresh tokens in database for revocation
-- HTTPS only in production
-- HttpOnly cookies for web (not applicable for CLI)
-
-**Password Security:**
-```typescript
-import bcrypt from 'bcrypt';
-
-const SALT_ROUNDS = 12;
-
-async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, SALT_ROUNDS);
-}
-
-async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(password, hash);
+  });
 }
 ```
 
-### API Token Encryption
+### Pattern 3: Chart Composition via Props
 
-**Encrypt third-party API tokens at rest:**
+**What:** Use a single composable chart component with type prop instead of separate chart files for similar visualizations.
+
+**Anti-Pattern:** 7 separate files with duplicated Recharts setup.
+
+**Recommended:**
 ```typescript
-import crypto from 'crypto';
+// UtilityChart.tsx
+type ChartType = 'yearOverYear' | 'trend' | 'cumulative' | 'anomaly' |
+                 'costOverlay' | 'heatmap' | 'forecast';
 
-class TokenEncryption {
-  private algorithm = 'aes-256-gcm';
-  private key: Buffer;
+interface UtilityChartProps {
+  type: ChartType;
+  meterType: MeterType;
+  data: ConsumptionResult[];
+  settings: MeterSettings;
+}
 
-  constructor() {
-    this.key = Buffer.from(process.env.ENCRYPTION_KEY!, 'hex');
-  }
-
-  encrypt(text: string): string {
-    const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv(this.algorithm, this.key, iv);
-
-    let encrypted = cipher.update(text, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-
-    const authTag = cipher.getAuthTag();
-
-    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
-  }
-
-  decrypt(encrypted: string): string {
-    const [ivHex, authTagHex, encryptedData] = encrypted.split(':');
-
-    const iv = Buffer.from(ivHex, 'hex');
-    const authTag = Buffer.from(authTagHex, 'hex');
-
-    const decipher = crypto.createDecipheriv(this.algorithm, this.key, iv);
-    decipher.setAuthTag(authTag);
-
-    let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-
-    return decrypted;
+export function UtilityChart({ type, meterType, data, settings }: UtilityChartProps) {
+  switch(type) {
+    case 'yearOverYear':
+      return <ComposedChart>...</ComposedChart>;
+    case 'heatmap':
+      return <CalendarHeatmap>...</CalendarHeatmap>;
+    // ...
   }
 }
 ```
 
-### CORS Configuration
-
+**Alternative (Better for code organization):** Separate files but shared configuration:
 ```typescript
-// src/plugins/cors.ts
-import cors from '@fastify/cors';
-
-fastify.register(cors, {
-  origin: (origin, callback) => {
-    const allowedOrigins = [
-      'http://localhost:5173',  // Dev frontend
-      'https://timetracker.com'  // Production
-    ];
-
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'), false);
-    }
-  },
-  credentials: true,  // Allow cookies
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
-});
-```
-
-### Input Validation
-
-**Use JSON Schema validation:**
-```typescript
-const createEntrySchema = {
-  body: {
-    type: 'object',
-    required: ['date', 'duration'],
-    properties: {
-      date: { type: 'string', format: 'date' },
-      duration: { type: 'number', minimum: 0, maximum: 24 },
-      project: { type: 'string', maxLength: 100 },
-      description: { type: 'string', maxLength: 500 }
-    }
-  }
+// charts/shared-config.ts
+export const CHART_COLORS = {
+  strom: '#f59e0b', // amber
+  gas: '#3b82f6',   // blue
+  wasserWarm: '#ef4444' // red
 };
 
-fastify.post('/api/entries', {
-  schema: createEntrySchema,
-  preHandler: [fastify.authenticate]
-}, async (request, reply) => {
-  // Request body is validated and typed
-  const entry = await createEntry(request.body);
-  return entry;
-});
+export const BASE_CHART_PROPS = {
+  margin: { top: 20, right: 30, left: 0, bottom: 5 }
+};
 ```
 
-### Audit Logging
+### Pattern 4: OCR Processing Flow
 
-**Log all security-sensitive operations:**
+**What:** Handle image upload → preprocessing → OCR → validation → return value.
+
+**Flow:**
+1. **Client uploads image** via file input or camera capture
+2. **Server receives multipart/form-data** with meterType in body
+3. **Server preprocesses image** (resize, grayscale, contrast) for better OCR
+4. **Tesseract OCR extracts text** with confidence scores
+5. **Validate extracted number** (e.g., numeric, reasonable range)
+6. **Return value + confidence** to client for user confirmation
+7. **Client displays preview** with extracted value editable before saving
+
+**Implementation:**
 ```typescript
-interface AuditLog {
-  tenantId: string;
-  userId: string;
-  action: string;  // "login", "sync", "delete_entry", etc.
-  resource?: string;
-  ip: string;
-  userAgent: string;
-  timestamp: Date;
-}
+// ocr.service.ts
+import Tesseract from 'tesseract.js';
+import sharp from 'sharp';
 
-async function logAudit(log: AuditLog): Promise<void> {
-  await prisma.auditLog.create({ data: log });
-}
+export async function extractMeterValue(
+  imageBuffer: Buffer
+): Promise<{ value: number; confidence: number }> {
+  // Preprocess for better OCR
+  const processed = await sharp(imageBuffer)
+    .resize(800) // Reasonable size
+    .grayscale()
+    .normalize()
+    .toBuffer();
 
-// Usage
-fastify.addHook('onResponse', async (request, reply) => {
-  if (request.user && reply.statusCode < 400) {
-    await logAudit({
-      tenantId: request.user.tenantId,
-      userId: request.user.userId,
-      action: `${request.method} ${request.url}`,
-      ip: request.ip,
-      userAgent: request.headers['user-agent'] || '',
-      timestamp: new Date()
-    });
+  // OCR
+  const { data } = await Tesseract.recognize(processed, 'deu', {
+    tessedit_char_whitelist: '0123456789.,', // Only digits
+  });
+
+  // Extract number from text
+  const numbers = data.text.match(/\d+[.,]?\d*/g) || [];
+  if (numbers.length === 0) {
+    throw new Error('No numeric value found');
   }
-});
-```
 
----
+  // Take largest number (meter reading is usually prominent)
+  const value = parseFloat(numbers[0].replace(',', '.'));
 
-## 9. Deployment Architecture
-
-### Development Environment
-```bash
-# Start all services
-docker-compose up
-
-# Services
-- frontend: http://localhost:5173
-- backend: http://localhost:3000
-- database: SQLite (file-based)
-```
-
-### Staging Environment
-```bash
-# Using production-like setup
-docker-compose -f docker-compose.yml -f docker-compose.staging.yml up
-
-# Services
-- frontend: https://staging.timetracker.com (nginx)
-- backend: Internal only (via frontend proxy)
-- database: PostgreSQL (single instance)
-- redis: Cache layer
-```
-
-### Production Environment
-
-**Option A: Docker Compose on Single VM (Small Scale)**
-```
-VM Instance (4 vCPU, 8GB RAM)
-├── Nginx (frontend + reverse proxy)
-├── Backend instances (x2, load balanced)
-├── PostgreSQL (managed service like AWS RDS)
-└── Redis (managed service like AWS ElastiCache)
-```
-
-**Option B: Kubernetes (Large Scale)**
-```yaml
-# Simplified k8s architecture
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: backend
-spec:
-  replicas: 3
-  template:
-    spec:
-      containers:
-      - name: backend
-        image: timetracker/backend:latest
-        env:
-        - name: DATABASE_URL
-          valueFrom:
-            secretKeyRef:
-              name: db-credentials
-              key: url
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "500m"
-          limits:
-            memory: "1Gi"
-            cpu: "1000m"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: backend
-spec:
-  selector:
-    app: backend
-  ports:
-  - port: 3000
-  type: ClusterIP
-```
-
-### CI/CD Pipeline
-
-```yaml
-# .github/workflows/deploy.yml
-name: Deploy
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Run tests
-        run: |
-          cd backend
-          npm install
-          npm test
-
-  build:
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Build Docker images
-        run: |
-          docker build -t timetracker/backend:${{ github.sha }} ./backend
-          docker build -t timetracker/frontend:${{ github.sha }} ./frontend
-      - name: Push to registry
-        run: |
-          docker push timetracker/backend:${{ github.sha }}
-          docker push timetracker/frontend:${{ github.sha }}
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to production
-        run: |
-          ssh ${{ secrets.DEPLOY_HOST }} "cd /app && docker-compose pull && docker-compose up -d"
-```
-
----
-
-## 10. Migration Path from Current Architecture
-
-### Current State
-```
-backend/
-├── src/
-│   ├── server.ts (routes + logic mixed)
-│   ├── services/
-│   │   ├── toggl.service.ts (API fetch + DB upsert)
-│   │   └── tempo.service.ts (API fetch + DB upsert)
-│   └── adapters/
-│       ├── import-adapter.interface.ts
-│       ├── toggl-csv.adapter.ts
-│       └── tempo-csv.adapter.ts
-├── prisma/
-│   └── schema.prisma (no userId/tenantId)
-└── No Docker setup
-```
-
-### Target State
-```
-backend/
-├── src/
-│   ├── server.ts (app initialization only)
-│   ├── routes/
-│   │   ├── entries.routes.ts
-│   │   ├── sync.routes.ts
-│   │   └── auth.routes.ts
-│   ├── services/
-│   │   ├── provider-sync.service.ts (orchestrator)
-│   │   ├── time-entry.service.ts (CRUD)
-│   │   └── user.service.ts (auth)
-│   ├── providers/
-│   │   ├── provider.interface.ts
-│   │   ├── provider.factory.ts
-│   │   ├── cache-manager.ts
-│   │   ├── toggl.provider.ts
-│   │   ├── tempo.provider.ts
-│   │   └── clockify.provider.ts
-│   ├── plugins/
-│   │   ├── prisma.ts
-│   │   ├── auth.ts
-│   │   └── tenant-context.ts
-│   └── middleware/
-│       ├── authentication.ts
-│       └── rate-limit.ts
-├── prisma/
-│   └── schema.prisma (User, Tenant, TimeEntry with RLS)
-├── Dockerfile
-└── docker-compose.yml
-```
-
-### Step-by-Step Migration
-
-**Step 1: Extract Routes from server.ts**
-```typescript
-// BEFORE: server.ts (everything mixed)
-fastify.get('/api/entries', async (request, reply) => {
-  const entries = await prisma.timeEntry.findMany();
-  return entries;
-});
-
-// AFTER: routes/entries.routes.ts
-export default async function entriesRoutes(fastify: FastifyInstance) {
-  fastify.get('/', {
-    preHandler: [fastify.authenticate]
-  }, async (request, reply) => {
-    const service = new TimeEntryService(fastify.prisma);
-    return service.findAll(request.user.userId);
-  });
-}
-
-// server.ts
-import entriesRoutes from './routes/entries.routes';
-fastify.register(entriesRoutes, { prefix: '/api/entries' });
-```
-
-**Step 2: Create Provider Interface**
-```typescript
-// Create src/providers/provider.interface.ts (shown in section 3)
-// Migrate TogglService to TogglProvider (remove DB logic)
-// Migrate TempoService to TempoProvider (remove DB logic)
-```
-
-**Step 3: Create ProviderSyncService**
-```typescript
-// Create orchestrator that uses providers (shown in section 3)
-// Update routes to use ProviderSyncService instead of direct services
-```
-
-**Step 4: Add Authentication**
-```prisma
-// Add User model to schema.prisma
-// Create migration: npx prisma migrate dev --name add-users
-// Implement JWT authentication (shown in section 2)
-```
-
-**Step 5: Containerize**
-```dockerfile
-// Create Dockerfile (shown in section 1)
-// Create docker-compose.yml (shown in section 1)
-// Test: docker-compose up
-```
-
-**Step 6: Add Multi-Tenancy (Future)**
-```prisma
-// Add Tenant model and tenantId to schema.prisma
-// Migrate to PostgreSQL
-// Implement RLS (shown in section 4)
-```
-
-**Timeline estimate:**
-- Step 1-3: 1-2 weeks (refactoring)
-- Step 4: 1 week (authentication)
-- Step 5: 2-3 days (Docker)
-- Step 6: 2-3 weeks (multi-tenant infrastructure)
-
----
-
-## 11. Testing Strategy
-
-### Unit Tests
-```typescript
-// tests/providers/toggl.provider.test.ts
-import { TogglProvider } from '../../src/providers/toggl.provider';
-import { CacheManager } from '../../src/providers/cache-manager';
-
-describe('TogglProvider', () => {
-  let provider: TogglProvider;
-  let mockCache: CacheManager;
-
-  beforeEach(() => {
-    mockCache = {
-      get: jest.fn(),
-      set: jest.fn()
-    } as any;
-
-    provider = new TogglProvider('test-token', mockCache);
-  });
-
-  test('fetchEntries returns normalized data', async () => {
-    // Mock axios response
-    jest.spyOn(axios, 'get').mockResolvedValue({
-      data: [{ id: 1, duration: 3600, start: '2026-01-19T10:00:00Z' }]
-    });
-
-    const entries = await provider.fetchEntries({});
-
-    expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({
-      externalId: '1',
-      durationSeconds: 3600
-    });
-  });
-});
-```
-
-### Integration Tests
-```typescript
-// tests/integration/sync.test.ts
-import { build } from '../helper';  // Fastify test helper
-
-describe('Sync API', () => {
-  const app = await build();
-
-  afterAll(() => app.close());
-
-  test('POST /api/sync/toggl requires authentication', async () => {
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/sync/toggl'
-    });
-
-    expect(response.statusCode).toBe(401);
-  });
-
-  test('POST /api/sync/toggl syncs entries', async () => {
-    // Login first
-    const loginRes = await app.inject({
-      method: 'POST',
-      url: '/api/auth/login',
-      payload: { email: 'test@example.com', password: 'password' }
-    });
-
-    const token = loginRes.json().access_token;
-
-    // Sync
-    const syncRes = await app.inject({
-      method: 'POST',
-      url: '/api/sync/toggl',
-      headers: { Authorization: `Bearer ${token}` }
-    });
-
-    expect(syncRes.statusCode).toBe(200);
-    expect(syncRes.json()).toMatchObject({
-      provider: 'toggl',
-      entriesCount: expect.any(Number)
-    });
-  });
-});
-```
-
-### E2E Tests
-```typescript
-// tests/e2e/full-flow.test.ts
-import { chromium } from 'playwright';
-
-describe('Full user flow', () => {
-  test('user can login, sync, and view entries', async () => {
-    const browser = await chromium.launch();
-    const page = await browser.newPage();
-
-    // Login
-    await page.goto('http://localhost:5173/login');
-    await page.fill('input[name=email]', 'test@example.com');
-    await page.fill('input[name=password]', 'password');
-    await page.click('button[type=submit]');
-
-    // Wait for dashboard
-    await page.waitForSelector('text=Dashboard');
-
-    // Trigger sync
-    await page.click('button:has-text("Sync Toggl")');
-    await page.waitForSelector('text=Sync complete');
-
-    // Verify entries visible
-    const entries = await page.locator('.time-entry').count();
-    expect(entries).toBeGreaterThan(0);
-
-    await browser.close();
-  });
-});
-```
-
----
-
-## 12. Monitoring & Observability
-
-### Metrics to Track
-```typescript
-// Prometheus metrics
-import client from 'prom-client';
-
-const syncDuration = new client.Histogram({
-  name: 'timetracker_sync_duration_seconds',
-  help: 'Provider sync duration',
-  labelNames: ['provider', 'status'],
-  buckets: [0.1, 0.5, 1, 5, 10, 30]
-});
-
-const apiRequests = new client.Counter({
-  name: 'timetracker_api_requests_total',
-  help: 'Total API requests',
-  labelNames: ['method', 'path', 'status']
-});
-
-// Usage
-const end = syncDuration.startTimer({ provider: 'toggl' });
-try {
-  await provider.sync();
-  end({ status: 'success' });
-} catch (error) {
-  end({ status: 'error' });
-}
-```
-
-### Logging
-```typescript
-// Structured logging with Pino (Fastify default)
-fastify.log.info({
-  provider: 'toggl',
-  userId: request.user.userId,
-  entriesCount: 42
-}, 'Sync completed');
-
-// Error logging
-fastify.log.error({
-  err: error,
-  provider: 'toggl',
-  userId: request.user.userId
-}, 'Sync failed');
-```
-
-### Health Checks
-```typescript
-// Health check endpoint
-fastify.get('/health', async (request, reply) => {
-  const checks = {
-    database: await checkDatabase(),
-    redis: await checkRedis(),
-    providers: await checkProviders()
+  return {
+    value,
+    confidence: data.confidence / 100
   };
-
-  const healthy = Object.values(checks).every(c => c.healthy);
-
-  reply.code(healthy ? 200 : 503).send({
-    status: healthy ? 'healthy' : 'unhealthy',
-    checks
-  });
-});
-
-async function checkDatabase(): Promise<{ healthy: boolean }> {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    return { healthy: true };
-  } catch {
-    return { healthy: false };
-  }
 }
 ```
 
----
+### Pattern 5: Excel Import Mapping
 
-## Summary & Recommendations
+**What:** Parse Excel file, validate structure, transform to MeterReading format.
 
-### Immediate Actions (Phase 1: Foundation)
-1. ✅ Create Docker Compose setup with 3 services (frontend, backend, database)
-2. ✅ Implement provider abstraction pattern (extract interface from services)
-3. ✅ Add JWT authentication and user model to schema
-4. ✅ Set up basic CI/CD pipeline
+**Expected Excel format:**
+```
+| Date       | Strom | Gas  | Wasser Warm |
+|------------|-------|------|-------------|
+| 01.01.2024 | 15234 | 8921 | 4521        |
+| 01.02.2024 | 15567 | 9103 | 4598        |
+```
 
-### Short-term (Phase 2: Production Ready)
-5. ✅ Migrate from SQLite to PostgreSQL
-6. ✅ Implement caching layer (Redis)
-7. ✅ Add rate limiting and security headers
-8. ✅ Set up monitoring and logging
+**Implementation:**
+```typescript
+// excel-import.service.ts
+import XLSX from 'xlsx';
 
-### Long-term (Phase 3: Scale)
-9. ✅ Add multi-tenant support with RLS
-10. ✅ Implement horizontal scaling with load balancer
-11. ✅ Add read replicas for database
-12. ✅ Build admin dashboard for tenant management
+interface ImportRow {
+  date: Date;
+  strom?: number;
+  gas?: number;
+  wasserWarm?: number;
+}
 
-### Critical Success Factors
-- **Start simple:** Single-user with good architecture beats complex multi-tenant with technical debt
-- **Test at boundaries:** Unit test providers, integration test services, E2E test critical flows
-- **Security first:** Authentication, encryption, RLS from day one (don't retrofit)
-- **Document decisions:** ADRs (Architecture Decision Records) for major choices
+export async function parseUtilityExcel(
+  fileBuffer: Buffer
+): Promise<MeterReading[]> {
+  const workbook = XLSX.read(fileBuffer);
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows: any[] = XLSX.utils.sheet_to_json(sheet);
 
----
+  const readings: MeterReading[] = [];
+
+  for (const row of rows) {
+    // Parse date (handle German format dd.mm.yyyy)
+    const date = parseGermanDate(row['Date'] || row['Datum']);
+
+    // Create reading for each meter type
+    if (row['Strom']) {
+      readings.push({
+        meterType: 'STROM',
+        readingDate: date,
+        value: parseFloat(row['Strom']),
+        source: 'IMPORT'
+      });
+    }
+    // Similar for gas, wasserWarm...
+  }
+
+  return readings;
+}
+```
+
+## Data Flow
+
+### Flow 1: Manual Entry
+
+```
+User clicks "Add Reading"
+  → ManualEntryForm opens (modal)
+  → User selects meter type (Strom/Gas/Wasser Warm)
+  → User enters date + value
+  → Submit
+    → POST /api/utilities/readings
+      → Validate schema (Zod)
+      → Create MeterReading with source='MANUAL'
+      → Return created reading
+    ← 201 Created
+  → Refresh readings list
+  → Recalculate consumption (client-side or fetch)
+  → Update charts
+```
+
+### Flow 2: OCR Entry
+
+```
+User clicks "OCR Scan"
+  → OCRCapture modal opens
+  → User selects meter type
+  → User uploads image OR captures from camera
+    → Preview image shown
+  → User clicks "Extract Value"
+    → POST /api/utilities/readings/ocr (multipart)
+      → Save temp file
+      → ocr.service.extractMeterValue(buffer)
+        → Preprocess image (sharp)
+        → Tesseract OCR
+        → Extract numeric value
+        → Return value + confidence
+      ← { value: 15234, confidence: 0.87 }
+    → Display extracted value (editable)
+    → User confirms/edits value
+  → User clicks "Save"
+    → POST /api/utilities/readings (value + metadata)
+      → Create MeterReading with source='OCR'
+      → Store OCR confidence in metadata
+      ← 201 Created
+  → Refresh readings list + charts
+```
+
+### Flow 3: Excel Import
+
+```
+User clicks "Import Excel"
+  → ExcelImportModal opens
+  → User uploads .xlsx file
+    → Parse file client-side for preview (optional)
+  → User clicks "Import"
+    → POST /api/utilities/readings/import (multipart)
+      → Save temp file
+      → excel-import.service.parseUtilityExcel(buffer)
+        → Read workbook
+        → Parse rows
+        → Validate dates and values
+        → Transform to MeterReading[]
+      → Bulk insert with Prisma createMany
+      ← { imported: 36, skipped: 2, errors: [] }
+    → Show import summary
+  → Refresh readings list + charts
+```
+
+### Flow 4: Chart Rendering
+
+```
+User navigates to Utilities page
+  → Fetch readings: GET /api/utilities/readings
+  → Fetch settings: GET /api/utilities/settings
+  ← { readings: [...], settings: {...} }
+  → Group readings by meterType
+  → Calculate consumption (consumption-calculator)
+  → For each selected chart type:
+    → Transform data to chart format
+    → Render Recharts component
+      - YearOverYear: Group by month, compare years
+      - Trend: Line chart with linear regression
+      - Cumulative: Area chart with running sum
+      - Anomaly: Scatter with threshold bands
+      - CostOverlay: Bar (consumption) + Line (cost)
+      - Heatmap: Calendar grid with color intensity
+      - Forecast: Historical line + projection (simple linear)
+```
+
+## Database Schema
+
+### Prisma Models
+
+```prisma
+// Add to backend/prisma/schema.prisma
+
+enum MeterType {
+  STROM
+  GAS
+  WASSER_WARM
+}
+
+enum ReadingSource {
+  MANUAL
+  OCR
+  IMPORT
+}
+
+model MeterReading {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  meterType   MeterType
+  readingDate DateTime      @db.Timestamptz(6)
+  value       Float         // The meter reading value
+  source      ReadingSource @default(MANUAL)
+  metadata    Json?         // OCR confidence, import file name, etc.
+  createdAt   DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime      @updatedAt @db.Timestamptz(6)
+
+  @@unique([meterType, readingDate]) // One reading per meter per date
+  @@index([meterType, readingDate])
+  @@index([readingDate])
+}
+
+model MeterSettings {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  meterType MeterType @unique
+  unitCost  Float?    // Cost per unit (kWh, m³)
+  enabled   Boolean   @default(true)
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+}
+```
+
+### Consumption Calculation (Not Stored)
+
+Consumption is **calculated on-demand** from sequential readings, not stored in database:
+
+**Why not store?**
+- Avoids data duplication
+- Always accurate (recalculated from source readings)
+- Simpler schema
+- Easy to recalculate with different logic
+
+**Performance consideration:**
+- For large datasets (years of monthly readings), consider caching calculated consumption
+- For this use case (3 meters × 12 months/year = 36 readings/year), calculation is instant
+
+### Migration
+
+```bash
+# Create migration
+cd backend
+npx prisma migrate dev --name add_utility_meters
+```
+
+## Integration Points
+
+### 1. Authentication & Authorization
+
+**Existing:** JWT-based auth with refresh tokens, all routes protected by `app.authenticate` hook.
+
+**Integration:** Utility routes use same protection wrapper:
+```typescript
+// In server.ts
+app.register(async (protectedRoutes) => {
+  protectedRoutes.addHook('onRequest', app.authenticate);
+
+  protectedRoutes.register(exportRoutes);
+  protectedRoutes.register(summaryRoutes);
+  protectedRoutes.register(estimateRoutes);
+  protectedRoutes.register(utilityRoutes); // NEW
+}, { prefix: '/api' });
+```
+
+No changes needed to auth system.
+
+### 2. Navigation
+
+**Existing:** View switcher in header with buttons for Dashboard, Add Entry, Estimates, Settings.
+
+**Integration:** Add "Utilities" button to header navigation:
+```typescript
+// In App.tsx AuthenticatedApp
+const [currentView, setCurrentView] = useState<
+  'dashboard' | 'add-entry' | 'settings' | 'estimates' | 'utilities' // Add 'utilities'
+>('dashboard');
+
+// Add button in header
+<button
+  onClick={() => setCurrentView('utilities')}
+  className="flex items-center gap-2 px-3 py-2..."
+>
+  <Zap size={18} /> {/* Or Bolt/Activity icon */}
+  <span className="hidden md:inline">Utilities</span>
+</button>
+
+// Add view renderer
+if (currentView === 'utilities') {
+  return <Utilities onBack={() => setCurrentView('dashboard')} />;
+}
+```
+
+### 3. Theme System
+
+**Existing:** ThemeProvider context with dark mode support, accessed via `useTheme()` hook.
+
+**Integration:** All new utility components consume theme:
+```typescript
+// In UtilityChart.tsx
+import { useTheme } from '../hooks/useTheme';
+
+export function UtilityChart({ ... }) {
+  const { effectiveTheme } = useTheme();
+  const isDarkMode = effectiveTheme === 'dark';
+
+  return (
+    <ResponsiveContainer>
+      <ComposedChart>
+        <CartesianGrid stroke={isDarkMode ? '#404040' : '#f3f4f6'} />
+        {/* ... */}
+      </ComposedChart>
+    </ResponsiveContainer>
+  );
+}
+```
+
+Recharts styling uses same dark mode colors as existing charts.
+
+### 4. Toast Notifications
+
+**Existing:** Toast context with `success`, `error`, `warning` methods.
+
+**Integration:** Use for user feedback in utility operations:
+```typescript
+// In Utilities.tsx
+import { useToast } from '../hooks/useToast';
+
+const { toast } = useToast();
+
+const handleOCRScan = async (image: File) => {
+  try {
+    const result = await ocrService.scan(image);
+    toast.success(`Value extracted: ${result.value} (${result.confidence}% confidence)`);
+  } catch (error) {
+    toast.error('OCR failed. Please try manual entry.');
+  }
+};
+```
+
+### 5. Multipart File Uploads
+
+**Existing:** `@fastify/multipart` plugin registered in server.ts, used for CSV uploads.
+
+**Integration:** Reuse for OCR images and Excel imports:
+```typescript
+// In utility.routes.ts
+fastify.post('/readings/ocr', async (req, reply) => {
+  const data = await req.file();
+  if (!data) {
+    return reply.code(400).send({ error: 'No file uploaded' });
+  }
+
+  const buffer = await data.toBuffer();
+  const result = await ocrService.extractMeterValue(buffer);
+
+  return result;
+});
+```
+
+Pattern identical to existing CSV upload endpoint.
+
+### 6. Database Client
+
+**Existing:** Single PrismaClient instance instantiated in server.ts, passed to routes.
+
+**Integration:** Utility routes use same Prisma instance:
+```typescript
+// utility.routes.ts
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+export async function utilityRoutes(fastify: FastifyInstance) {
+  fastify.get('/readings', async (req, reply) => {
+    const readings = await prisma.meterReading.findMany({
+      orderBy: { readingDate: 'desc' }
+    });
+    return readings;
+  });
+}
+```
+
+## Build Order (Dependency-Based)
+
+### Phase 1: Foundation (Backend schema + basic CRUD)
+**Why first:** Other features depend on database schema and basic API.
+
+1. **Database schema** (Prisma migration)
+   - Add MeterReading and MeterSettings models
+   - Run migration
+2. **Backend routes skeleton** (utility.routes.ts)
+   - CRUD endpoints for readings (GET, POST, PUT, DELETE)
+   - Settings endpoints (GET, PUT)
+3. **Zod schemas** (validation)
+   - meter-reading.schema.ts
+   - meter-settings.schema.ts
+
+**Validation:** Test with curl/Postman before building frontend.
+
+### Phase 2: Manual Entry UI (Most valuable, minimal dependencies)
+**Why second:** Delivers immediate value, no complex dependencies.
+
+4. **Frontend page structure** (Utilities.tsx)
+   - Navigation integration
+   - Basic layout (header, back button)
+   - State management for readings
+5. **Readings list component** (MeterReadingsList.tsx)
+   - Table display
+   - Delete functionality
+6. **Manual entry form** (ManualEntryForm.tsx)
+   - Modal form
+   - Meter type selector
+   - Date + value inputs
+   - Submit to API
+
+**Validation:** Can create, view, edit, delete readings manually.
+
+### Phase 3: Basic Visualization (Builds on Phase 2 data)
+**Why third:** Provides value visualization for manually entered data.
+
+7. **Consumption calculator service** (consumption-calculator.service.ts)
+   - Calculate consumption from readings
+   - Handle meter rollovers
+8. **Basic charts** (start with 2-3 simple ones)
+   - Trend chart (line chart)
+   - Year-over-year bars
+   - Cost overlay
+9. **Chart grid container** (UtilityChartGrid.tsx)
+   - Tab/dropdown selector
+   - Responsive grid layout
+
+**Validation:** Charts render correctly with manual data.
+
+### Phase 4: OCR Feature (Complex, but independent)
+**Why fourth:** Most complex feature, benefits from stable foundation.
+
+10. **OCR service** (ocr.service.ts)
+    - Tesseract integration
+    - Image preprocessing (sharp)
+    - Value extraction logic
+11. **OCR backend route** (POST /readings/ocr)
+    - File upload handling
+    - Service integration
+    - Error handling
+12. **OCR frontend component** (OCRCapture.tsx)
+    - File upload UI
+    - Camera capture (optional)
+    - Image preview
+    - Extracted value confirmation
+
+**Validation:** Can capture meter photo and extract value.
+
+### Phase 5: Excel Import (Independent feature)
+**Why fifth:** Independent of OCR, adds batch import capability.
+
+13. **Excel import service** (excel-import.service.ts)
+    - xlsx parsing
+    - Row validation
+    - Transformation logic
+14. **Excel import route** (POST /readings/import)
+    - File upload
+    - Bulk insert
+    - Error reporting
+15. **Excel import modal** (ExcelImportModal.tsx)
+    - File picker
+    - Preview (optional)
+    - Import progress/results
+
+**Validation:** Can import historical data from Excel.
+
+### Phase 6: Advanced Charts (Builds on consumption data)
+**Why sixth:** Requires stable data and consumption calculation.
+
+16. **Advanced visualizations**
+    - Cumulative area chart
+    - Anomaly detection scatter
+    - Seasonal heatmap
+    - Forecast projection
+17. **Settings UI** (UtilitySettings.tsx)
+    - Per-meter cost configuration
+    - Enable/disable meters
+    - Unit labels
+
+**Validation:** All 7 chart types working, settings affect calculations.
+
+### Phase 7: Polish & Testing
+**Why last:** Refinement after core features complete.
+
+18. **Error handling improvements**
+19. **Loading states**
+20. **Responsive design tweaks**
+21. **End-to-end testing**
+
+## New Components vs Modifications
+
+### New Components (No modifications to existing)
+
+**Backend:**
+- `routes/utility.routes.ts` (completely new)
+- `services/ocr.service.ts` (completely new)
+- `services/excel-import.service.ts` (completely new)
+- `services/consumption-calculator.service.ts` (completely new)
+- `schemas/meter-reading.schema.ts` (completely new)
+- `schemas/meter-settings.schema.ts` (completely new)
+
+**Frontend:**
+- `pages/Utilities.tsx` (completely new)
+- All `components/meters/*` (completely new, ~10 files)
+
+### Modifications to Existing
+
+**Minimal modifications required:**
+
+1. **backend/prisma/schema.prisma**
+   - ADD: MeterReading model
+   - ADD: MeterSettings model
+   - ADD: MeterType enum
+   - ADD: ReadingSource enum
+
+2. **backend/src/server.ts**
+   - ADD: `import utilityRoutes from './routes/utility.routes'`
+   - ADD: `protectedRoutes.register(utilityRoutes)` (one line in existing wrapper)
+
+3. **frontend/src/App.tsx**
+   - ADD: `'utilities'` to view state type union
+   - ADD: Navigation button in header (5 lines)
+   - ADD: View renderer `if (currentView === 'utilities')` (3 lines)
+
+**Total modifications:** ~10 lines of code in existing files.
+
+### Why Minimal Modifications Work
+
+The application's existing architecture already supports this pattern:
+- **Route registration:** Plugin-based (Fastify)
+- **Navigation:** View-switcher pattern (not routing-based)
+- **Database:** Prisma models are additive
+- **Services:** Independent, no shared state
+
+This is the **correct architectural decision** because:
+- Time tracking and utility tracking are separate domains
+- No shared business logic between domains
+- Clean separation prevents cross-domain bugs
+- Easy to test independently
+- Could be extracted to microservice later if needed
 
 ## Sources
 
-**Official Documentation:**
-- [Docker Compose Application Model](https://docs.docker.com/compose/intro/compose-application-model/)
-- [Prisma & Fastify Integration](https://www.prisma.io/fastify)
-- [Microsoft Azure Gateway Aggregation Pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/gateway-aggregation)
+### OCR & Image Processing
+- [Building an Image to Text OCR Application in Node.js Using Express and Tesseract](https://mohammedshamseerpv.medium.com/building-an-image-to-text-ocr-application-in-node-js-using-express-and-tesseract-ec8a638135d3)
+- [Tesseract OCR with Node.js: A Comprehensive Guide](https://www.w3tutorials.net/blog/tesseract-ocr-nodejs/)
+- [Automate Document Processing in Node.js Using AI OCR & NLP](https://medium.com/lets-code-future/automate-document-processing-in-node-js-using-ai-ocr-nlp-61f2d0d2f04b)
 
-**Architecture Patterns:**
-- [Multi-Service Docker Compose](https://wkrzywiec.medium.com/how-to-run-database-backend-and-frontend-in-a-single-click-with-docker-compose-4bcda66f6de)
-- [Docker Compose Networks](https://www.compilenrun.com/docs/devops/docker/docker-compose/docker-compose-networks/)
-- [API Aggregation Patterns](https://api7.ai/learning-center/api-101/api-aggregation-combining-multiple-apis)
-- [Gateway Aggregation in Microservices](https://mdjamilkashemporosh.medium.com/the-aggregator-pattern-in-microservice-architecture-your-go-to-guide-cd54575a5e6e)
+### Meter Data Management
+- [Step 3. Create a Central Energy Database | Energy Data Management Guide](https://eere.energy.gov/energydataguide/step3.shtml)
+- [Meter Data Management System: Top 10+ tools in 2026](https://research.aimultiple.com/meter-data-management/)
+- [AWS releases smart meter data analytics](https://aws.amazon.com/blogs/industries/aws-releases-smart-meter-data-analytics-platform/)
 
-**Authentication & Security:**
-- [JWT Authentication in REST APIs](https://blog.logrocket.com/secure-rest-api-jwt-authentication/)
-- [CLI JWT Authentication](https://dev.to/devdevgo/how-to-implement-jwt-authentication-in-command-line-applications-4dp0)
-- [AWS CLI-Style JWT Profiles](https://hoop.dev/blog/aws-cli-style-profiles-for-jwt-based-authentication/)
+### Excel/XLSX Parsing
+- [NPM + SheetJS XLSX in 2026: Safe Installation, Secure Parsing, and Real-World Node.js Patterns](https://thelinuxcode.com/npm-sheetjs-xlsx-in-2026-safe-installation-secure-parsing-and-real-world-nodejs-patterns/)
+- [Node.js: Reading and Parsing Excel (XLSX) Files](https://www.kindacode.com/article/node-js-reading-and-parsing-excel-xlsx-files)
+- [Read/Write Excel File in Node.js using XLSX](https://plainenglish.io/blog/read-write-excel-file-in-node-js-using-xlsx)
 
-**Design Patterns:**
-- [Adapter Pattern for Third-Party Integrations](https://medium.com/@olorondu_emeka/adapter-design-pattern-a-guide-to-manage-multiple-third-party-integrations-dc342f435daf)
-- [Strategy Pattern in TypeScript](https://medium.com/@robinviktorsson/a-guide-to-the-strategy-design-pattern-in-typescript-and-node-js-with-practical-examples-c3d6984a2050)
-- [Provider Pattern in React](https://www.patterns.dev/vanilla/provider-pattern/)
+### File Upload & Multipart
+- [Multer File Upload in Express.js: Complete Guide for 2026](https://dev.to/marufrahmanlive/multer-file-upload-in-expressjs-complete-guide-for-2026-1i9p)
+- [@fastify/multipart - GitHub](https://github.com/fastify/fastify-multipart)
+- [Uploading Files with Multer in Node.js](https://betterstack.com/community/guides/scaling-nodejs/multer-in-nodejs/)
 
-**Multi-Tenant Architecture:**
-- [PostgreSQL RLS for Multi-Tenant SaaS](https://www.techbuddies.io/2026/01/01/how-to-implement-postgresql-row-level-security-for-multi-tenant-saas/)
-- [Multi-Tenant Database Patterns](https://www.bytebase.com/blog/multi-tenant-database-architecture-patterns-explained/)
-- [AWS Multi-Tenant RLS](https://aws.amazon.com/blogs/database/multi-tenant-data-isolation-with-postgresql-row-level-security/)
-- [Multi-Tenant Architecture Guide 2026](https://www.clickittech.com/software-development/multi-tenant-architecture/)
-
-**Data Integration:**
-- [Data Integration Patterns 2026](https://blog.skyvia.com/common-data-integration-patterns/)
-- [Data Integration Architecture](https://nexla.com/data-integration-101/data-integration-architecture/)
-- [Airbyte Data Integration Patterns](https://airbyte.com/data-engineering-resources/data-integration-patterns)
-
-**Production Deployment:**
-- [Fastify Prisma Docker Best Practices](https://jaygould.co.uk/2022-05-08-typescript-fastify-prisma-starter-with-docker/)
-- [Hardening Prisma for Production](https://dev.to/lcnunes09/hardening-prisma-for-production-resilient-connection-handling-in-nodejs-apis-41dm)
-- [Building Web APIs with Fastify](https://betterstack.com/community/guides/scaling-nodejs/fastify-web-api/)
-
----
-
-**Document Version:** 1.0
-**Last Updated:** 2026-01-19
-**Confidence Level:** HIGH (based on official documentation and industry best practices)
+### React Charts & Visualization
+- [Creating Dynamic and Interactive Charts in React Using Recharts](https://medium.com/@vprince001/creating-dynamic-and-interactive-charts-in-react-using-recharts-18ebab12bd03)
+- [How to Build Dynamic Charts in React with Recharts (Including Edge Cases)](https://dev.to/calebali/how-to-build-dynamic-charts-in-react-with-recharts-including-edge-cases-3e72)
+- [Best React chart libraries (2025 update): Features, performance & use cases](https://blog.logrocket.com/best-react-chart-libraries-2025/)
+- [Heatmaps for Time Series | Towards Data Science](https://towardsdatascience.com/heatmaps-for-time-series/)
+- [Time series forecasting and anomaly detection](https://www.striim.com/docs/platform/en/time-series-forecasting-and-anomaly-detection.html)
