@@ -33,6 +33,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    volumes:
+      - uploads_data:/app/uploads
     environment:
       NODE_ENV: development
       DATABASE_URL: postgresql://timetracker:devpassword@db:5432/timetracker
@@ -62,6 +64,7 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:
 
 networks:
   backend-network:

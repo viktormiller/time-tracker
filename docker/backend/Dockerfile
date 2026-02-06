@@ -73,8 +73,8 @@ COPY --from=builder --chown=node:node /app/node_modules/@prisma/client ./node_mo
 # Set production environment
 ENV NODE_ENV=production
 
-# Create cache directory with proper permissions
-RUN mkdir -p /app/cache && chown -R node:node /app
+# Create cache and uploads directories with proper permissions
+RUN mkdir -p /app/cache /app/uploads/meter-photos && chown -R node:node /app
 
 # Use non-root user
 USER node
