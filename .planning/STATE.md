@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-02-06)
 ## Current Position
 
 Phase: 7 of 10 (Foundation)
-Plan: 2 of 4
+Plan: 3 of 4
 Status: In progress
-Last activity: 2026-02-06 — Completed 07-02-PLAN.md (Frontend Shell)
+Last activity: 2026-02-06 — Completed 07-03-PLAN.md (Backend API Routes)
 
-Progress: [██████████░░░░░░░░░░] 50% (Phase 7: 2/4 plans)
+Progress: [███████████████░░░░░] 75% (Phase 7: 3/4 plans)
 
 ## Performance Metrics
 
@@ -32,8 +32,8 @@ Progress: [██████████░░░░░░░░░░] 50% (Ph
 **v2.0 Progress:**
 - Total phases: 4 (phases 7-10)
 - Total plans: 4+ (Phase 7 has 4 plans, others TBD)
-- Completed: 2 (07-01: Database schema, 07-02: Frontend shell)
-- In progress: Phase 7 (2/4 plans complete)
+- Completed: 3 (07-01: Database schema, 07-02: Frontend shell, 07-03: Backend API)
+- In progress: Phase 7 (3/4 plans complete)
 
 ## Accumulated Context
 
@@ -58,6 +58,11 @@ All v1.0 decisions logged in PROJECT.md Key Decisions table with outcomes.
 - **Active state consistency**: Apply same indigo highlight pattern to Utilities and Estimates buttons for uniform UX
 - **Interface export**: Export MeterReading interface to satisfy TypeScript noUnusedLocals while preparing for Plan 04 use
 
+**Phase 7 Plan 03 decisions:**
+- **Application-level monotonic validation**: Primary validation in route handlers with user-friendly errors; database trigger as safety net backup
+- **@fastify/static version 7**: Use v7 (not v8) for Fastify 4.x compatibility (v8 requires Fastify 5.x)
+- **Uploads in protected scope**: Register @fastify/static within utilityRoutes to ensure photos require JWT authentication
+
 ### Pending Todos
 
 None.
@@ -74,7 +79,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-06T13:22:53Z (Phase 7 Plan 02 execution)
-Stopped at: Completed 07-02-PLAN.md (Frontend shell with navigation, EmptyState, MeterTabs)
+Last session: 2026-02-06T10:16:26Z (Phase 7 Plan 03 execution)
+Stopped at: Completed 07-03-PLAN.md (Backend API routes with CRUD, monotonic validation, photo upload)
 Resume file: None
-Next: Execute 07-03-PLAN.md or 07-04-PLAN.md (API endpoints and CRUD operations)
+Next: Execute 07-04-PLAN.md (Frontend CRUD implementation)
