@@ -4,17 +4,17 @@
 
 See: .planning/PROJECT.md (updated 2026-02-06)
 
-**Core value:** See all worked hours in one place — regardless of which system tracked them.
-**Current focus:** v1.0 MVP shipped — planning next milestone
+**Core value:** See all important numbers in one place — worked hours and utility consumption, regardless of source.
+**Current focus:** v2.0 Utility Tracking
 
 ## Current Position
 
-Phase: All v1.0 phases complete (1-6)
-Plan: N/A — between milestones
-Status: v1.0.1 deployed to production
-Last activity: 2026-02-06 — v1.0.1 deployed (toast notifications + dark mode dropdown fix)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-02-06 — Milestone v2.0 started
 
-Progress: [████████████████████] 100% v1.0 complete + quick tasks
+Progress: [░░░░░░░░░░░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -52,11 +52,11 @@ None.
 
 ### Blockers/Concerns
 
-None — all v1.0 blockers resolved.
+None.
 
 ## Session Continuity
 
-Last session: 2026-02-06 (v1.0.1 release)
-Stopped at: v1.0.1 pushed to origin, ready for production deploy
+Last session: 2026-02-06 (v2.0 milestone start)
+Stopped at: Defining requirements for v2.0 Utility Tracking
 Resume file: None
-Next: Deploy v1.0.1 to production, then /gsd:new-milestone for next milestone planning
+Next: Complete requirements → roadmap → /gsd:plan-phase

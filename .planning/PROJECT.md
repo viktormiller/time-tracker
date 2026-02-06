@@ -2,15 +2,32 @@
 
 ## What This Is
 
-A production-ready, full-stack time tracking aggregator that consolidates hours from multiple sources (Toggl, Tempo, manual entry) into a unified dashboard with JWT authentication, Docker deployment, dark mode, CSV/PDF export, and a Go CLI for terminal access.
+A production-ready, full-stack personal dashboard that consolidates time tracking from multiple sources (Toggl, Tempo, manual entry) and utility meter tracking (electricity, gas, hot water) into a unified interface with JWT authentication, Docker deployment, dark mode, data visualization, and a Go CLI.
 
 ## Why It Exists
 
-Tracking time across multiple systems (Toggl for general work, Tempo for Jira-linked tasks) makes it hard to see total daily hours. This dashboard provides a single source of truth for worked hours across all sources.
+Tracking time across multiple systems and utility consumption across meters makes it hard to see the big picture. This dashboard provides a single source of truth for worked hours and household utility usage.
 
 ## Core Value
 
-**See all worked hours in one place** — regardless of which system tracked them.
+**See all important numbers in one place** — worked hours and utility consumption, regardless of source.
+
+## Current Milestone: v2.0 Utility Tracking
+
+**Goal:** Add utility meter tracking (electricity, gas, hot water) with OCR meter reading, dynamic year-over-year charts, and data import — as a new section alongside time tracking.
+
+**Target features:**
+- Utility meter reading storage (Strom, Gas, Wasser Warm) with automatic consumption calculation
+- OCR from phone photos of digital meter displays (photo → prefill → confirm)
+- Manual meter reading input
+- Excel import for historical data
+- Dynamic year-over-year bar charts with selectable comparison ranges (2/3/5 years)
+- Consumption trend lines
+- Cumulative yearly tracker (running totals by year)
+- Monthly anomaly detection (flag unusual consumption)
+- Cost overlay with configurable per-unit rates (€/kWh, €/m³)
+- Seasonal heatmap (months × years, color-coded by intensity)
+- Forecast projection (predict remaining year based on history)
 
 ## Current State
 
@@ -48,8 +65,18 @@ Tracking time across multiple systems (Toggl for general work, Tempo for Jira-li
 
 ### Active
 
-- [ ] Clockify API integration
-- [ ] Project estimation tracking with enhanced project names
+- [ ] Utility meter reading CRUD (Strom, Gas, Wasser Warm)
+- [ ] Automatic consumption calculation from meter readings
+- [ ] OCR meter reading from phone photos (digital displays)
+- [ ] Manual meter reading input
+- [ ] Excel import for historical utility data
+- [ ] Dynamic year-over-year bar charts with selectable ranges
+- [ ] Consumption trend lines
+- [ ] Cumulative yearly tracker
+- [ ] Monthly anomaly detection
+- [ ] Cost overlay with configurable rates
+- [ ] Seasonal heatmap visualization
+- [ ] Forecast projection for current year
 
 ### Out of Scope
 
@@ -59,6 +86,11 @@ Tracking time across multiple systems (Toggl for general work, Tempo for Jira-li
 - Billing/invoicing features — export covers this need
 - Time tracking in CLI — CLI is read-only + sync trigger
 - Offline mode — requires PWA/service workers
+- Clockify API integration — deferred from v1, not priority for v2.0
+- Project estimation tracking — deferred from v1, not priority for v2.0
+- Analog meter dial OCR — only digital displays for v2.0
+- Smart meter API integration — manual input + OCR sufficient
+- Utility bill PDF parsing — manual entry and Excel import cover this
 
 ## Constraints
 
@@ -95,6 +127,9 @@ Tracking time across multiple systems (Toggl for general work, Tempo for Jira-li
 2. All worked hours visible in one view
 3. Can check hours from terminal without opening browser
 4. Adding a new time source takes < 1 day of work
+5. Snap a photo of a meter, reading is extracted and saved
+6. Monthly utility consumption visible with year-over-year comparison
+7. Excel history imported so trends are visible from day one
 
 ---
-*Last updated: 2026-02-06 after v1.0.1 release*
+*Last updated: 2026-02-06 after v2.0 milestone start*
