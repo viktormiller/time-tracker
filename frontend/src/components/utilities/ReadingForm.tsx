@@ -56,25 +56,12 @@ export function ReadingForm({ reading, meters, selectedMeterId, onClose, onSave 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     meterId: reading?.meterId || selectedMeterId || (meters[0]?.id || ''),
-    readingDate: reading?.readingDate || new Date().toISOString().split('T')[0],
+    readingDate: reading?.readingDate?.split('T')[0] || new Date().toISOString().split('T')[0],
     value: reading?.value || 0,
     notes: reading?.notes || '',
   });
   const [valueDisplay, setValueDisplay] = useState(() => formatDE(reading?.value || 0));
   const [valueFocused, setValueFocused] = useState(false);
-
-  useEffect(() => {
-    if (reading) {
-      setFormData({
-        meterId: reading.meterId,
-        readingDate: reading.readingDate.split('T')[0],
-        value: reading.value,
-        notes: reading.notes || '',
-      });
-      setValueDisplay(formatDE(reading.value));
-      setPhotoPreview(reading.photoPath || null);
-    }
-  }, [reading]);
 
   // Clean up object URL on unmount
   useEffect(() => {
@@ -176,7 +163,7 @@ export function ReadingForm({ reading, meters, selectedMeterId, onClose, onSave 
       console.error('Failed to save reading:', err);
 
       if (err.response?.status === 400 && err.response?.data?.error) {
-        const errorMessage = err.response.data.error;
+        const errorMessage = err.response.data.message || err.response.data.error;
         setValidationError(errorMessage);
         toast.error('Ungültige Ablesung');
       } else {
