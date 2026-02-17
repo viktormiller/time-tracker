@@ -6,6 +6,7 @@ import { MeterTabs } from '../components/utilities/MeterTabs';
 import { MeterForm } from '../components/utilities/MeterForm';
 import { ReadingForm } from '../components/utilities/ReadingForm';
 import { ReadingsTable } from '../components/utilities/ReadingsTable';
+import { ConsumptionChart } from '../components/utilities/ConsumptionChart';
 import { useToast } from '../hooks/useToast';
 
 interface UtilitiesProps {
@@ -293,6 +294,20 @@ export function Utilities({ onBack }: UtilitiesProps) {
                       Ablesung hinzufügen
                     </button>
                   )}
+                </div>
+              )}
+
+              {/* Consumption chart */}
+              {selectedMeter && readings.length >= 2 && !readingsLoading && (
+                <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+                  <h4 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3">
+                    Verbrauch
+                  </h4>
+                  <ConsumptionChart
+                    readings={readings}
+                    unit={selectedMeter.unit}
+                    meterType={selectedMeter.type}
+                  />
                 </div>
               )}
 

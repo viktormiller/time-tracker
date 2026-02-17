@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
-import { MoreVertical, Edit2, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
+import { MoreVertical, Edit2, Trash2, ChevronUp, ChevronDown, Camera } from 'lucide-react';
+import { PhotoLightbox } from './PhotoLightbox';
 
 export interface MeterReading {
   id: string;
@@ -28,6 +29,7 @@ export function ReadingsTable({ readings, loading, onEdit, onDelete }: ReadingsT
   const [sortField, setSortField] = useState<SortField>('readingDate');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -92,6 +94,9 @@ export function ReadingsTable({ readings, loading, onEdit, onDelete }: ReadingsT
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
                 Notizen
               </th>
+              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+                Foto
+              </th>
               <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
                 Aktionen
               </th>
@@ -111,6 +116,9 @@ export function ReadingsTable({ readings, loading, onEdit, onDelete }: ReadingsT
                 </td>
                 <td className="px-4 py-4">
                   <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-40"></div>
+                </td>
+                <td className="px-4 py-4">
+                  <div className="h-10 w-10 bg-gray-200 dark:bg-gray-700 rounded mx-auto"></div>
                 </td>
                 <td className="px-4 py-4">
                   <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-8 ml-auto"></div>
@@ -161,6 +169,9 @@ export function ReadingsTable({ readings, loading, onEdit, onDelete }: ReadingsT
             <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
               Notizen
             </th>
+            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+              Foto
+            </th>
             <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
               Aktionen
             </th>
@@ -196,6 +207,22 @@ export function ReadingsTable({ readings, loading, onEdit, onDelete }: ReadingsT
                   </span>
                 ) : (
                   <span className="text-gray-400 dark:text-gray-500">-</span>
+                )}
+              </td>
+              <td className="px-4 py-4 text-center">
+                {reading.photoPath ? (
+                  <button
+                    onClick={() => setLightboxPhoto(reading.photoPath)}
+                    className="inline-block rounded overflow-hidden hover:ring-2 hover:ring-indigo-500 transition"
+                  >
+                    <img
+                      src={reading.photoPath}
+                      alt="Zählerstand"
+                      className="w-10 h-10 object-cover rounded"
+                    />
+                  </button>
+                ) : (
+                  <Camera size={18} className="text-gray-300 dark:text-gray-600 mx-auto" />
                 )}
               </td>
               <td className="px-4 py-4 text-right relative">
@@ -238,6 +265,13 @@ export function ReadingsTable({ readings, loading, onEdit, onDelete }: ReadingsT
           ))}
         </tbody>
       </table>
+
+      {lightboxPhoto && (
+        <PhotoLightbox
+          photoPath={lightboxPhoto}
+          onClose={() => setLightboxPhoto(null)}
+        />
+      )}
     </div>
   );
 }

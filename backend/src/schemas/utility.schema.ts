@@ -8,9 +8,7 @@ export const createMeterSchema = z.object({
 });
 
 export const updateMeterSchema = z.object({
-  type: z.enum(['STROM', 'GAS', 'WASSER_WARM']).optional(),
   name: z.string().min(1, 'Meter name is required').max(100).optional(),
-  unit: z.string().min(1, 'Unit is required').optional(),
   location: z.string().max(200).optional().nullable(),
 });
 
