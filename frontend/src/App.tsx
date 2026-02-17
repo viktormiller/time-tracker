@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import {
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList, Cell
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList, Cell, ReferenceLine
 } from 'recharts';
 import {
   Upload, Loader2, RefreshCw, Filter, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown,
@@ -11,7 +11,7 @@ import {
   format, parseISO, isSameDay, startOfToday, endOfToday,
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   startOfQuarter, endOfQuarter, startOfYear, endOfYear,
-  subWeeks, subMonths, isWithinInterval, addDays, addWeeks, addMonths, addQuarters, addYears, eachDayOfInterval
+  subWeeks, subMonths, isWithinInterval, addDays, addWeeks, addMonths, addQuarters, addYears, eachDayOfInterval, isWeekend
 } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import { de } from 'date-fns/locale';
@@ -61,6 +61,7 @@ interface DailyStats {
   tempoHours: number;
   manualHours: number;
   projects: string[];
+  isWeekend: boolean;
 }
 
 type SortKey = 'date' | 'source' | 'project' | 'description' | 'duration';
@@ -130,6 +131,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'date', direction: 'desc' });
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
   const [showSyncModal, setShowSyncModal] = useState<'TOGGL' | 'TEMPO' | null>(null);
+  const [showDailyLimit, setShowDailyLimit] = useState(true);
 
   // Timezone, Jira config, and hour limits state
   const [timezone, setTimezoneState] = useState(getTimezone());
@@ -273,7 +275,8 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                     togglHours: 0,
                     tempoHours: 0,
                     manualHours: 0,
-                    projects: []
+                    projects: [],
+                    isWeekend: isWeekend(day)
                 });
             });
         } catch(e) {
@@ -292,7 +295,8 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
           map.set(dateKey, {
               dateStr: dateKey,
               displayDate: format(dateObj, 'EE dd.MM', { locale: de }),
-              totalHours: 0, togglHours: 0, tempoHours: 0, manualHours: 0, projects: []
+              totalHours: 0, togglHours: 0, tempoHours: 0, manualHours: 0, projects: [],
+              isWeekend: isWeekend(dateObj)
           });
       }
 
@@ -690,14 +694,41 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 relative">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Tägliche Arbeitszeit</h2>
-            <div className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1"><MousePointerClick size={14} /><span>Balken klicken für Details</span></div>
+            <div className="flex items-center gap-4">
+              {hourLimits.dailyLimit && (
+                <button
+                  onClick={() => setShowDailyLimit(v => !v)}
+                  className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border transition ${
+                    showDailyLimit
+                      ? 'border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                      : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
+                  }`}
+                >
+                  <span className={`inline-block w-3 h-0 border-t-2 border-dashed ${showDailyLimit ? 'border-red-500' : 'border-gray-400 dark:border-gray-500'}`} />
+                  {hourLimits.dailyLimit}h Limit
+                </button>
+              )}
+              <div className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1"><MousePointerClick size={14} /><span>Balken klicken für Details</span></div>
+            </div>
           </div>
           {aggregatedData.length > 0 ? (
               <div className="h-[400px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={aggregatedData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }} onClick={handleBarClick}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#404040' : '#f3f4f6'} />
-                    <XAxis dataKey="displayDate" tick={{fill: isDarkMode ? '#d1d5db' : '#9ca3af', fontSize: 12}} tickLine={false} axisLine={false} />
+                    {hourLimits.dailyLimit && showDailyLimit && (
+                      <ReferenceLine y={hourLimits.dailyLimit} stroke="#ef4444" strokeDasharray="6 3" strokeWidth={1.5} label={{ value: `${hourLimits.dailyLimit}h`, position: 'right', fill: '#ef4444', fontSize: 12 }} />
+                    )}
+                    <XAxis dataKey="displayDate" tickLine={false} axisLine={false} tick={(props: any) => {
+                      const { x, y, payload } = props;
+                      const label: string = payload.value ?? '';
+                      const isWknd = label.startsWith('Sa') || label.startsWith('So');
+                      return (
+                        <text x={x} y={y + 12} textAnchor="middle" fontSize={12} fill={isWknd ? '#ef4444' : (isDarkMode ? '#d1d5db' : '#9ca3af')}>
+                          {label}
+                        </text>
+                      );
+                    }} />
                     <YAxis tick={{fill: isDarkMode ? '#d1d5db' : '#9ca3af', fontSize: 12}} tickLine={false} axisLine={false} tickFormatter={(val) => `${val}h`} />
                     <Tooltip formatter={(val: number) => [val.toFixed(2) + ' h']} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: isDarkMode ? '#374151' : '#ffffff', color: isDarkMode ? '#f3f4f6' : '#1f2937' }} cursor={{fill: isDarkMode ? '#1f2937' : '#f9fafb'}} />
                     <Legend iconType="circle" />

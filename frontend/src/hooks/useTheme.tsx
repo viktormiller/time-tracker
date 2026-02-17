@@ -1,6 +1,17 @@
 import { useState, useEffect, useContext, createContext, type ReactNode } from 'react';
 import { getTheme, setTheme as persistTheme, getEffectiveTheme, type Theme, type EffectiveTheme } from '../lib/theme';
 
+function updateThemeColorMeta(effective: EffectiveTheme) {
+  const color = effective === 'dark' ? '#111827' : '#f9fafb';
+  let meta = document.querySelector('meta[name="theme-color"]:not([media])') as HTMLMetaElement | null;
+  if (!meta) {
+    meta = document.createElement('meta');
+    meta.setAttribute('name', 'theme-color');
+    document.head.appendChild(meta);
+  }
+  meta.setAttribute('content', color);
+}
+
 interface ThemeContextValue {
   theme: Theme;
   setTheme: (theme: Theme) => void;
@@ -23,6 +34,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       document.documentElement.classList.remove('dark');
     }
 
+    // Update theme-color meta tag for iOS Safari chrome
+    updateThemeColorMeta(effective);
+
     if (theme === 'system') {
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
@@ -35,6 +49,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         } else {
           document.documentElement.classList.remove('dark');
         }
+        updateThemeColorMeta(newEffective);
       };
 
       mediaQuery.addEventListener('change', handleChange);
