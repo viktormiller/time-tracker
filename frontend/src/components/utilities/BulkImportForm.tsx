@@ -30,9 +30,12 @@ function parseGermanDate(text: string): string | null {
 
 function parseValue(text: string): number | null {
   let cleaned = text.trim();
-  // German format: 1.234,56 -> dots are thousands, comma is decimal
   if (cleaned.includes(',')) {
+    // German format: 1.234,56 -> dots are thousands, comma is decimal
     cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+  } else if (/\.\d{3}$/.test(cleaned)) {
+    // Dot followed by exactly 3 digits at end (e.g. 2.389) -> thousands separator
+    cleaned = cleaned.replace(/\./g, '');
   }
   const num = Number(cleaned);
   return isNaN(num) || num < 0 ? null : num;
@@ -44,23 +47,26 @@ function parseLines(text: string): ParsedRow[] {
     .map(line => line.trim())
     .filter(line => line.length > 0)
     .map(line => {
-      // Split by comma, semicolon, or tab
-      const parts = line.split(/[,;\t]/).map(p => p.trim());
-      if (parts.length < 2) {
+      // Match date, then split on first comma/semicolon/tab to get the value portion.
+      // This avoids splitting German numbers like 2.694,41 on the comma.
+      const match = line.match(/^\s*(\d{1,2}\.\d{1,2}\.\d{4})\s*[,;\t]\s*(.+)\s*$/);
+      if (!match) {
         return { readingDate: '', displayDate: line, value: 0, status: 'error' as const, error: 'Ungültiges Format' };
       }
 
-      const date = parseGermanDate(parts[0]);
+      const [, dateStr, valueStr] = match;
+
+      const date = parseGermanDate(dateStr);
       if (!date) {
-        return { readingDate: '', displayDate: parts[0], value: 0, status: 'error' as const, error: 'Ungültiges Datum' };
+        return { readingDate: '', displayDate: dateStr, value: 0, status: 'error' as const, error: 'Ungültiges Datum' };
       }
 
-      const value = parseValue(parts[1]);
+      const value = parseValue(valueStr);
       if (value === null) {
-        return { readingDate: date, displayDate: parts[0].trim(), value: 0, status: 'error' as const, error: 'Ungültiger Wert' };
+        return { readingDate: date, displayDate: dateStr, value: 0, status: 'error' as const, error: 'Ungültiger Wert' };
       }
 
-      return { readingDate: date, displayDate: parts[0].trim(), value, status: 'valid' as const };
+      return { readingDate: date, displayDate: dateStr, value, status: 'valid' as const };
     });
 }
 
