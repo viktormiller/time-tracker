@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import axios from 'axios';
-import { X, Loader2, Upload, FileUp, CheckCircle, AlertCircle, MinusCircle } from 'lucide-react';
+import { X, Loader2, Upload, FileUp, CheckCircle, AlertCircle } from 'lucide-react';
 import { useToast } from '../../hooks/useToast';
 
 interface BulkImportFormProps {
@@ -103,7 +103,6 @@ export function BulkImportForm({ meterId, meterName, onClose, onSave }: BulkImpo
 
   const validRows = parsed.filter(r => r.status === 'valid');
   const errorRows = parsed.filter(r => r.status === 'error');
-  const hasErrors = errorRows.length > 0;
 
   const handleImport = async () => {
     if (validRows.length === 0) return;
@@ -118,7 +117,7 @@ export function BulkImportForm({ meterId, meterName, onClose, onSave }: BulkImpo
         toast.success(`${res.data.created} Ablesung(en) importiert`);
         onSave();
       } else {
-        toast.info('Keine neuen Ablesungen importiert (alle bereits vorhanden)');
+        toast.warning('Keine neuen Ablesungen importiert (alle bereits vorhanden)');
       }
     } catch (err: any) {
       if (err.response?.status === 400 && err.response?.data?.message) {
