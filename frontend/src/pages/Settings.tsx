@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { ArrowLeft, CheckCircle, XCircle, Database, Clock, Loader2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Database, Clock, Loader2, Save } from 'lucide-react';
 import { format } from 'date-fns';
+import { getHourLimits, setHourLimits } from '../lib/hour-limits';
 
 const API_URL = '/api';
 
@@ -14,12 +15,31 @@ interface ProviderStatus {
 
 interface SettingsProps {
   onBack: () => void;
+  onLimitsChanged?: () => void;
 }
 
-export function Settings({ onBack }: SettingsProps) {
+export function Settings({ onBack, onLimitsChanged }: SettingsProps) {
   const [providers, setProviders] = useState<ProviderStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Hour limits state
+  const [dailyLimitInput, setDailyLimitInput] = useState<string>('');
+  const [weeklyLimitInput, setWeeklyLimitInput] = useState<string>('');
+
+  useEffect(() => {
+    const limits = getHourLimits();
+    setDailyLimitInput(limits.dailyLimit !== null ? String(limits.dailyLimit) : '');
+    setWeeklyLimitInput(limits.weeklyLimit !== null ? String(limits.weeklyLimit) : '');
+  }, []);
+
+  const handleSaveLimits = () => {
+    setHourLimits({
+      dailyLimit: dailyLimitInput !== '' ? parseFloat(dailyLimitInput) : null,
+      weeklyLimit: weeklyLimitInput !== '' ? parseFloat(weeklyLimitInput) : null,
+    });
+    onLimitsChanged?.();
+  };
 
   useEffect(() => {
     fetchProviderStatus();
@@ -65,6 +85,53 @@ export function Settings({ onBack }: SettingsProps) {
             <ArrowLeft size={24} />
           </button>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h1>
+        </div>
+
+        {/* Hour Limits Section */}
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-6">Stundenziele</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Tageslimit (h)
+              </label>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                value={dailyLimitInput}
+                onChange={e => setDailyLimitInput(e.target.value)}
+                placeholder="z.B. 8"
+                className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 shadow-sm p-2.5 border"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Wochenlimit (h)
+              </label>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                value={weeklyLimitInput}
+                onChange={e => setWeeklyLimitInput(e.target.value)}
+                placeholder="z.B. 40"
+                className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 shadow-sm p-2.5 border"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+            Leer lassen um das jeweilige Ziel zu deaktivieren.
+          </p>
+          <div className="flex justify-end">
+            <button
+              onClick={handleSaveLimits}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition"
+            >
+              <Save size={16} />
+              Speichern
+            </button>
+          </div>
         </div>
 
         {/* Provider Status Section */}

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList, Cell
@@ -28,6 +28,7 @@ import LoginForm from './components/LoginForm';
 import { TimezoneSelector } from './components/TimezoneSelector';
 import { ProjectCell } from './components/ProjectCell';
 import { getTimezone, setTimezone } from './lib/timezone';
+import { getHourLimits, type HourLimits } from './lib/hour-limits';
 import { ThemeToggle } from './components/ThemeToggle';
 import { useTheme, ThemeProvider } from './hooks/useTheme';
 import { exportToCSV } from './lib/csv-export';
@@ -130,9 +131,14 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
   const [showSyncModal, setShowSyncModal] = useState<'TOGGL' | 'TEMPO' | null>(null);
 
-  // Timezone and Jira config state
+  // Timezone, Jira config, and hour limits state
   const [timezone, setTimezoneState] = useState(getTimezone());
   const [jiraBaseUrl, setJiraBaseUrl] = useState<string | null>(null);
+  const [hourLimits, setHourLimitsState] = useState<HourLimits>(getHourLimits());
+
+  const reloadHourLimits = useCallback(() => {
+    setHourLimitsState(getHourLimits());
+  }, []);
 
   // DATE STATE
   const [datePreset, setDatePreset] = useState<DatePreset>('MONTH');
@@ -418,7 +424,25 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   };
 
   const totalHoursFiltered = filteredEntries.reduce((acc, curr) => acc + curr.duration, 0);
-  const hoursToday = entries.filter(e => isSameDay(parseISO(e.date), new Date())).reduce((acc, curr) => acc + curr.duration, 0);
+  const hoursToday = useMemo(() => {
+    const tz = getTimezone();
+    const nowInTz = toZonedTime(new Date(), tz);
+    return entries
+      .filter(e => isSameDay(toZonedTime(parseISO(e.date), tz), nowInTz))
+      .reduce((acc, curr) => acc + curr.duration, 0);
+  }, [entries]);
+
+  const hoursThisWeek = useMemo(() => {
+    if (datePreset === 'WEEK' || datePreset === 'LAST_WEEK') {
+      return totalHoursFiltered;
+    }
+    const now = new Date();
+    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
+    return entries
+      .filter(e => isWithinInterval(parseISO(e.date), { start: weekStart, end: weekEnd }))
+      .reduce((acc, curr) => acc + curr.duration, 0);
+  }, [entries, datePreset, totalHoursFiltered]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -446,6 +470,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
     return (
       <SettingsPage
         onBack={() => setCurrentView('dashboard')}
+        onLimitsChanged={reloadHourLimits}
       />
     );
   }
@@ -638,10 +663,27 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
         </div>
 
         {/* KPIs */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card title="Stunden Heute" value={hoursToday.toFixed(2)} unit="h" color="text-indigo-600" />
+        <div className={`grid grid-cols-1 ${hourLimits.weeklyLimit ? 'sm:grid-cols-2 lg:grid-cols-4' : 'md:grid-cols-3'} gap-6`}>
+          <Card
+            title="Stunden Heute"
+            value={hoursToday.toFixed(2)}
+            unit="h"
+            color="text-indigo-600"
+            target={hourLimits.dailyLimit ? hourLimits.dailyLimit.toFixed(2) : undefined}
+            targetColor={hourLimits.dailyLimit ? (hoursToday >= hourLimits.dailyLimit ? 'text-green-600 dark:text-green-400' : 'text-orange-500 dark:text-orange-400') : undefined}
+          />
           <Card title="Summe im Zeitraum" value={totalHoursFiltered.toFixed(2)} unit="h" color="text-gray-900 dark:text-gray-100" />
           <Card title="Einträge" value={filteredEntries.length.toString()} unit="#" color="text-gray-600 dark:text-gray-100" />
+          {hourLimits.weeklyLimit && (
+            <Card
+              title="Stunden Woche"
+              value={hoursThisWeek.toFixed(2)}
+              unit="h"
+              color="text-indigo-600"
+              target={hourLimits.weeklyLimit.toFixed(2)}
+              targetColor={hoursThisWeek >= hourLimits.weeklyLimit ? 'text-green-600 dark:text-green-400' : 'text-orange-500 dark:text-orange-400'}
+            />
+          )}
         </div>
 
         {/* CHART */}
@@ -941,9 +983,16 @@ function EditModal({ entry, onClose, onSave }: { entry: TimeEntry, onClose: () =
     );
 }
 
-function Card({ title, value, unit, color }: { title: string, value: string, unit: string, color: string }) {
+function Card({ title, value, unit, color, target, targetColor }: { title: string, value: string, unit: string, color: string, target?: string, targetColor?: string }) {
     return (
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700"><p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">{title}</p><div className="flex items-baseline gap-1"><span className={`text-3xl font-bold ${color}`}>{value}</span><span className="text-gray-400 dark:text-gray-500 font-medium">{unit}</span></div></div>
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">{title}</p>
+          <div className="flex items-baseline gap-1">
+            <span className={`text-3xl font-bold ${targetColor || color}`}>{value}</span>
+            {target && <span className="text-lg text-gray-400 dark:text-gray-500 font-medium">/ {target}</span>}
+            <span className="text-gray-400 dark:text-gray-500 font-medium">{unit}</span>
+          </div>
+        </div>
     );
 }
 
