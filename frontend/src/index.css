@@ -2,9 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  background-color: #f8f9fa;
+}
+
+html.dark {
+  background-color: #111827;
+}
+
 body {
   background-color: #f8f9fa; /* Hellgrauer Hintergrund wie bei modernen Tools */
   color: #1f2937;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+html.dark body {
+  background-color: #111827; /* gray-900 */
+  color: #f3f4f6;
 }
 
 *:focus {
