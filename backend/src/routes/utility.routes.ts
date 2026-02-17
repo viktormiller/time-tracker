@@ -209,6 +209,45 @@ export async function utilityRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // GET /api/utilities/consumption/monthly - Year-over-year monthly consumption across all properties
+  fastify.get('/utilities/consumption/monthly', async (request, reply) => {
+    try {
+      const { type } = request.query as { type?: string };
+      if (!type || !['STROM', 'GAS', 'WASSER_WARM'].includes(type)) {
+        return reply.code(400).send({ error: 'type query parameter required (STROM, GAS, WASSER_WARM)' });
+      }
+
+      const meters = await prisma.meter.findMany({
+        where: { type, deletedAt: null },
+        include: { readings: { orderBy: { readingDate: 'asc' } } },
+      });
+
+      const unitMap: Record<string, string> = { STROM: 'kWh', GAS: 'm³', WASSER_WARM: 'm³' };
+      const monthlyMap = new Map<string, number>();
+
+      for (const meter of meters) {
+        for (let i = 1; i < meter.readings.length; i++) {
+          const prev = meter.readings[i - 1];
+          const curr = meter.readings[i];
+          const consumption = curr.value - prev.value;
+          const d = new Date(prev.readingDate);
+          const key = `${d.getFullYear()}-${d.getMonth()}`;
+          monthlyMap.set(key, (monthlyMap.get(key) ?? 0) + consumption);
+        }
+      }
+
+      const data = Array.from(monthlyMap.entries()).map(([key, consumption]) => {
+        const [year, month] = key.split('-').map(Number);
+        return { year, month, consumption: Math.round(consumption * 100) / 100 };
+      });
+
+      return { unit: unitMap[type] || 'kWh', data };
+    } catch (error) {
+      fastify.log.error(error);
+      reply.status(500).send({ error: 'Failed to fetch monthly consumption' });
+    }
+  });
+
   // GET /api/utilities/meters/:meterId/readings - Get readings with consumption
   fastify.get('/utilities/meters/:meterId/readings', async (request, reply) => {
     try {
@@ -236,6 +275,77 @@ export async function utilityRoutes(fastify: FastifyInstance) {
     } catch (error) {
       fastify.log.error(error);
       reply.status(500).send({ error: 'Failed to fetch readings' });
+    }
+  });
+
+  // POST /api/utilities/meters/:meterId/readings/bulk - Bulk import readings
+  fastify.post('/utilities/meters/:meterId/readings/bulk', async (request, reply) => {
+    try {
+      const { meterId } = request.params as { meterId: string };
+      const { readings: newReadings } = request.body as {
+        readings: { readingDate: string; value: number }[];
+      };
+
+      if (!Array.isArray(newReadings) || newReadings.length === 0) {
+        return reply.code(400).send({ error: 'No readings provided' });
+      }
+
+      // Fetch existing readings for this meter
+      const existing = await prisma.meterReading.findMany({
+        where: { meterId },
+        orderBy: { readingDate: 'asc' },
+        select: { readingDate: true, value: true },
+      });
+
+      const existingDates = new Set(
+        existing.map(r => r.readingDate.toISOString().split('T')[0])
+      );
+
+      // Separate new entries from duplicates
+      const toCreate: { readingDate: string; value: number }[] = [];
+      let skipped = 0;
+      for (const r of newReadings) {
+        if (existingDates.has(r.readingDate)) {
+          skipped++;
+        } else {
+          toCreate.push(r);
+        }
+      }
+
+      // Merge existing + new, sort by date, validate monotonic values
+      const merged = [
+        ...existing.map(r => ({
+          readingDate: r.readingDate.toISOString().split('T')[0],
+          value: r.value,
+        })),
+        ...toCreate,
+      ].sort((a, b) => a.readingDate.localeCompare(b.readingDate));
+
+      for (let i = 1; i < merged.length; i++) {
+        if (merged[i].value < merged[i - 1].value) {
+          return reply.code(400).send({
+            error: 'Monotonic validation failed',
+            message: `Wert ${merged[i].value} am ${merged[i].readingDate} ist kleiner als ${merged[i - 1].value} am ${merged[i - 1].readingDate}`,
+            details: { date: merged[i].readingDate, value: merged[i].value, previousValue: merged[i - 1].value },
+          });
+        }
+      }
+
+      // Insert all in a transaction
+      if (toCreate.length > 0) {
+        await prisma.$transaction(
+          toCreate.map(r =>
+            prisma.meterReading.create({
+              data: { meterId, readingDate: new Date(r.readingDate), value: r.value },
+            })
+          )
+        );
+      }
+
+      return { created: toCreate.length, skipped };
+    } catch (error) {
+      fastify.log.error(error);
+      reply.status(500).send({ error: 'Failed to bulk import readings' });
     }
   });
 

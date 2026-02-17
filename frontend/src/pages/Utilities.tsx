@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { ArrowLeft, Plus, MoreVertical, Edit2, Archive } from 'lucide-react';
+import { ArrowLeft, Plus, MoreVertical, Edit2, Archive, Upload } from 'lucide-react';
 import { EmptyState } from '../components/utilities/EmptyState';
 import { MeterTabs } from '../components/utilities/MeterTabs';
 import { MeterForm } from '../components/utilities/MeterForm';
@@ -9,6 +9,7 @@ import { ReadingsTable } from '../components/utilities/ReadingsTable';
 import { ConsumptionChart } from '../components/utilities/ConsumptionChart';
 import { PropertySelector, type Property } from '../components/utilities/PropertySelector';
 import { PropertyForm } from '../components/utilities/PropertyForm';
+import { BulkImportForm } from '../components/utilities/BulkImportForm';
 import { useToast } from '../hooks/useToast';
 
 interface UtilitiesProps {
@@ -57,6 +58,7 @@ export function Utilities({ onBack }: UtilitiesProps) {
   const [selectedMeterId, setSelectedMeterId] = useState<string | null>(null);
   const [openMeterMenuId, setOpenMeterMenuId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
 
   // API functions
   const fetchProperties = async () => {
@@ -331,28 +333,31 @@ export function Utilities({ onBack }: UtilitiesProps) {
                     </div>
                   </div>
                   {!selectedMeter.deletedAt && (
-                    <button
-                      onClick={() => setShowReadingForm(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600 text-white rounded-lg transition font-medium shadow-sm"
-                    >
-                      <Plus size={18} />
-                      Ablesung hinzufügen
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setShowBulkImport(true)}
+                        className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition font-medium"
+                        title="Ablesungen importieren"
+                      >
+                        <Upload size={18} />
+                        Import
+                      </button>
+                      <button
+                        onClick={() => setShowReadingForm(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600 text-white rounded-lg transition font-medium shadow-sm"
+                      >
+                        <Plus size={18} />
+                        Ablesung hinzufügen
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
 
-              {/* Consumption chart */}
-              {selectedMeter && readings.length >= 2 && !readingsLoading && (
+              {/* Consumption chart (year-over-year, cross-property) */}
+              {meters.filter(m => m.type === activeTab && !m.deletedAt).length > 0 && (
                 <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                  <h4 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3">
-                    Verbrauch
-                  </h4>
-                  <ConsumptionChart
-                    readings={readings}
-                    unit={selectedMeter.unit}
-                    meterType={selectedMeter.type}
-                  />
+                  <ConsumptionChart meterType={activeTab} />
                 </div>
               )}
 
@@ -404,6 +409,19 @@ export function Utilities({ onBack }: UtilitiesProps) {
           }}
           onSave={() => {
             fetchMeters();
+          }}
+        />
+      )}
+
+      {showBulkImport && selectedMeterId && selectedMeter && (
+        <BulkImportForm
+          meterId={selectedMeterId}
+          meterName={selectedMeter.name}
+          onClose={() => setShowBulkImport(false)}
+          onSave={() => {
+            if (selectedMeterId) {
+              fetchReadings(selectedMeterId);
+            }
           }}
         />
       )}
