@@ -2,33 +2,22 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="theme-color" content="#f9fafb" />
     <script>
       // FOUC prevention: Apply dark mode class and theme-color before first paint
       (function() {
-        const theme = localStorage.getItem('user_theme_preference');
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const isDark = theme === 'dark' || (theme !== 'light' && prefersDark);
+        var theme = localStorage.getItem('user_theme_preference');
+        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var isDark = theme === 'dark' || (theme !== 'light' && prefersDark);
 
         if (isDark) {
           document.documentElement.classList.add('dark');
-        }
-
-        // Override theme-color for manual preference so iOS Safari chrome matches
-        if (theme === 'dark' || theme === 'light') {
-          var meta = document.querySelector('meta[name="theme-color"]:not([media])');
-          if (!meta) {
-            meta = document.createElement('meta');
-            meta.setAttribute('name', 'theme-color');
-            document.head.appendChild(meta);
-          }
-          meta.setAttribute('content', isDark ? '#111827' : '#f9fafb');
+          document.querySelector('meta[name="theme-color"]').setAttribute('content', '#111827');
         }
       })();
     </script>
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#111827" media="(prefers-color-scheme: dark)" />
-    <meta name="theme-color" content="#f9fafb" media="(prefers-color-scheme: light)" />
     <title>frontend</title>
   </head>
   <body>

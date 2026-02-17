@@ -3,7 +3,7 @@ import { getTheme, setTheme as persistTheme, getEffectiveTheme, type Theme, type
 
 function updateThemeColorMeta(effective: EffectiveTheme) {
   const color = effective === 'dark' ? '#111827' : '#f9fafb';
-  let meta = document.querySelector('meta[name="theme-color"]:not([media])') as HTMLMetaElement | null;
+  let meta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
   if (!meta) {
     meta = document.createElement('meta');
     meta.setAttribute('name', 'theme-color');
