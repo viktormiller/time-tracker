@@ -60,7 +60,8 @@ export function ReadingForm({ reading, meters, selectedMeterId, onClose, onSave 
     value: reading?.value || 0,
     notes: reading?.notes || '',
   });
-  const [valueDisplay, setValueDisplay] = useState(() => formatDE(reading?.value || 0));
+  const isNew = !reading;
+  const [valueDisplay, setValueDisplay] = useState(() => isNew ? '' : formatDE(reading?.value || 0));
   const [valueFocused, setValueFocused] = useState(false);
 
   // Clean up object URL on unmount
@@ -253,10 +254,10 @@ export function ReadingForm({ reading, meters, selectedMeterId, onClose, onSave 
               <input
                 type="text"
                 inputMode="decimal"
-                value={valueFocused ? valueDisplay : formatDE(formData.value)}
+                value={valueFocused ? valueDisplay : (isNew && formData.value === 0 ? '' : formatDE(formData.value))}
                 onFocus={() => {
                   setValueFocused(true);
-                  setValueDisplay(String(formData.value));
+                  setValueDisplay(formData.value === 0 && isNew ? '' : String(formData.value));
                 }}
                 onBlur={() => {
                   const parsed = parseDE(valueDisplay);
