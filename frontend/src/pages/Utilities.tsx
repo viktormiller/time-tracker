@@ -7,6 +7,8 @@ import { MeterForm } from '../components/utilities/MeterForm';
 import { ReadingForm } from '../components/utilities/ReadingForm';
 import { ReadingsTable } from '../components/utilities/ReadingsTable';
 import { ConsumptionChart } from '../components/utilities/ConsumptionChart';
+import { PropertySelector, type Property } from '../components/utilities/PropertySelector';
+import { PropertyForm } from '../components/utilities/PropertyForm';
 import { useToast } from '../hooks/useToast';
 
 interface UtilitiesProps {
@@ -19,6 +21,7 @@ interface Meter {
   name: string;
   unit: string;
   location: string | null;
+  propertyId: string;
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -38,6 +41,10 @@ export interface MeterReading {
 
 export function Utilities({ onBack }: UtilitiesProps) {
   const { toast } = useToast();
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
+  const [showPropertyForm, setShowPropertyForm] = useState(false);
+  const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   const [meters, setMeters] = useState<Meter[]>([]);
   const [readings, setReadings] = useState<MeterReading[]>([]);
   const [activeTab, setActiveTab] = useState('STROM');
@@ -52,20 +59,47 @@ export function Utilities({ onBack }: UtilitiesProps) {
   const [showArchived, setShowArchived] = useState(false);
 
   // API functions
-  const fetchMeters = async () => {
+  const fetchProperties = async () => {
+    try {
+      const response = await axios.get<Property[]>('/api/utilities/properties');
+      setProperties(response.data);
+
+      // Auto-select first active property if none selected
+      if (!selectedPropertyId && response.data.length > 0) {
+        const firstActive = response.data.find(p => !p.movedOut) || response.data[0];
+        setSelectedPropertyId(firstActive.id);
+      }
+
+      return response.data;
+    } catch (err) {
+      console.error('Failed to fetch properties:', err);
+      toast.error('Fehler beim Laden der Wohnungen');
+      return [];
+    }
+  };
+
+  const fetchMeters = async (propertyId?: string) => {
     setLoading(true);
     try {
-      const params = showArchived ? '?includeArchived=true' : '';
-      const response = await axios.get<Meter[]>(`/api/utilities/meters${params}`);
+      const pid = propertyId || selectedPropertyId;
+      const params = new URLSearchParams();
+      if (showArchived) params.set('includeArchived', 'true');
+      if (pid) params.set('propertyId', pid);
+      const queryStr = params.toString() ? `?${params.toString()}` : '';
+
+      const response = await axios.get<Meter[]>(`/api/utilities/meters${queryStr}`);
       setMeters(response.data);
 
       // Auto-select first meter of active tab
       const activeMeters = response.data.filter(m => !m.deletedAt);
       const metersOfType = activeMeters.filter(m => m.type === activeTab);
-      if (metersOfType.length > 0 && !selectedMeterId) {
+      if (metersOfType.length > 0) {
         const firstMeter = metersOfType[0];
         setSelectedMeterId(firstMeter.id);
         await fetchReadings(firstMeter.id);
+      } else {
+        setSelectedMeterId(null);
+        setReadings([]);
       }
     } catch (err) {
       console.error('Failed to fetch meters:', err);
@@ -131,12 +165,14 @@ export function Utilities({ onBack }: UtilitiesProps) {
 
   // Effects
   useEffect(() => {
-    fetchMeters();
+    fetchProperties();
   }, []);
 
   useEffect(() => {
-    fetchMeters();
-  }, [showArchived]);
+    if (selectedPropertyId) {
+      fetchMeters(selectedPropertyId);
+    }
+  }, [selectedPropertyId, showArchived]);
 
   useEffect(() => {
     const metersOfType = meters.filter(m => m.type === activeTab);
@@ -174,6 +210,15 @@ export function Utilities({ onBack }: UtilitiesProps) {
               <ArrowLeft size={24} />
             </button>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Verbrauch</h1>
+            {properties.length > 0 && (
+              <PropertySelector
+                properties={properties}
+                selectedPropertyId={selectedPropertyId}
+                onSelect={setSelectedPropertyId}
+                onCreateNew={() => setShowPropertyForm(true)}
+                onEdit={(p) => { setEditingProperty(p); setShowPropertyForm(true); }}
+              />
+            )}
           </div>
           <div className="flex items-center gap-3">
             {meters.length > 0 && (
@@ -335,10 +380,24 @@ export function Utilities({ onBack }: UtilitiesProps) {
       </div>
 
       {/* Modals */}
+      {(showPropertyForm || editingProperty) && (
+        <PropertyForm
+          property={editingProperty}
+          onClose={() => {
+            setShowPropertyForm(false);
+            setEditingProperty(null);
+          }}
+          onSave={() => {
+            fetchProperties();
+          }}
+        />
+      )}
+
       {(showMeterForm || editingMeter) && (
         <MeterForm
           meter={editingMeter}
           defaultType={activeTab}
+          propertyId={selectedPropertyId}
           onClose={() => {
             setShowMeterForm(false);
             setEditingMeter(null);

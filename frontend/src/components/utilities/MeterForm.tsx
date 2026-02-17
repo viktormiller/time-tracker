@@ -14,6 +14,7 @@ interface Meter {
 interface MeterFormProps {
   meter?: Meter | null;
   defaultType?: string;
+  propertyId?: string | null;
   onClose: () => void;
   onSave: () => void;
 }
@@ -24,7 +25,7 @@ const METER_TYPES = [
   { value: 'WASSER_WARM', label: 'Wasser Warm', unit: 'm³' },
 ];
 
-export function MeterForm({ meter, defaultType, onClose, onSave }: MeterFormProps) {
+export function MeterForm({ meter, defaultType, propertyId, onClose, onSave }: MeterFormProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -57,23 +58,22 @@ export function MeterForm({ meter, defaultType, onClose, onSave }: MeterFormProp
 
     setLoading(true);
     try {
-      const payload = {
-        type: formData.type,
-        name: formData.name.trim(),
-        unit,
-        location: formData.location.trim() || null,
-      };
-
       if (meter) {
         // Edit mode
         await axios.put(`/api/utilities/meters/${meter.id}`, {
-          name: payload.name,
-          location: payload.location,
+          name: formData.name.trim(),
+          location: formData.location.trim() || null,
         });
         toast.success('Zähler aktualisiert');
       } else {
         // Create mode
-        await axios.post('/api/utilities/meters', payload);
+        await axios.post('/api/utilities/meters', {
+          type: formData.type,
+          name: formData.name.trim(),
+          unit,
+          location: formData.location.trim() || null,
+          propertyId,
+        });
         toast.success('Zähler erstellt');
       }
 

@@ -47,19 +47,33 @@ model EstimateProject {
   @@index([projectName])
 }
 
-model Meter {
-  id        String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  type      String          // "STROM" | "GAS" | "WASSER_WARM"
+model Property {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name      String
-  unit      String          // "kWh" or "m3"
-  location  String?
-  deletedAt DateTime?       @db.Timestamptz(6)
-  createdAt DateTime        @default(now()) @db.Timestamptz(6)
-  updatedAt DateTime        @updatedAt @db.Timestamptz(6)
-  readings  MeterReading[]
+  address   String?
+  movedIn   DateTime? @db.Date
+  movedOut  DateTime? @db.Date
+  createdAt DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @db.Timestamptz(6)
+  meters    Meter[]
+}
+
+model Meter {
+  id         String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type       String          // "STROM" | "GAS" | "WASSER_WARM"
+  name       String
+  unit       String          // "kWh" or "m3"
+  location   String?
+  propertyId String          @db.Uuid
+  deletedAt  DateTime?       @db.Timestamptz(6)
+  createdAt  DateTime        @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime        @updatedAt @db.Timestamptz(6)
+  property   Property        @relation(fields: [propertyId], references: [id])
+  readings   MeterReading[]
 
   @@index([type])
   @@index([deletedAt])
+  @@index([propertyId])
 }
 
 model MeterReading {

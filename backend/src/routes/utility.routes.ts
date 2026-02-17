@@ -4,6 +4,8 @@ import fastifyStatic from '@fastify/static';
 import path from 'path';
 import fs from 'fs';
 import {
+  createPropertySchema,
+  updatePropertySchema,
   createMeterSchema,
   updateMeterSchema,
   createReadingSchema,
@@ -20,13 +22,111 @@ export async function utilityRoutes(fastify: FastifyInstance) {
     decorateReply: false, // Avoid decorator conflict if registered elsewhere
   });
 
-  // GET /api/utilities/meters - List meters (active or including archived)
+  // === Property CRUD ===
+
+  // GET /api/utilities/properties - List all properties (active first)
+  fastify.get('/utilities/properties', async (request, reply) => {
+    try {
+      const properties = await prisma.property.findMany({
+        orderBy: [
+          { movedOut: 'asc' }, // null (active) first, then by movedOut date
+          { createdAt: 'desc' },
+        ],
+        include: {
+          _count: {
+            select: { meters: true },
+          },
+        },
+      });
+      return properties;
+    } catch (error) {
+      fastify.log.error(error);
+      reply.status(500).send({ error: 'Failed to fetch properties' });
+    }
+  });
+
+  // POST /api/utilities/properties - Create a property
+  fastify.post('/utilities/properties', async (request, reply) => {
+    try {
+      const data = createPropertySchema.parse(request.body);
+      const property = await prisma.property.create({
+        data: {
+          name: data.name,
+          address: data.address,
+          movedIn: data.movedIn ? new Date(data.movedIn) : null,
+          movedOut: data.movedOut ? new Date(data.movedOut) : null,
+        },
+      });
+      reply.status(201).send(property);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'ZodError') {
+        reply.status(400).send({ error: 'Validation error', details: error });
+      } else {
+        fastify.log.error(error);
+        reply.status(500).send({ error: 'Failed to create property' });
+      }
+    }
+  });
+
+  // PUT /api/utilities/properties/:id - Update a property
+  fastify.put('/utilities/properties/:id', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const data = updatePropertySchema.parse(request.body);
+      const updateData: any = {};
+      if (data.name !== undefined) updateData.name = data.name;
+      if (data.address !== undefined) updateData.address = data.address;
+      if (data.movedIn !== undefined) updateData.movedIn = data.movedIn ? new Date(data.movedIn) : null;
+      if (data.movedOut !== undefined) updateData.movedOut = data.movedOut ? new Date(data.movedOut) : null;
+
+      const property = await prisma.property.update({
+        where: { id },
+        data: updateData,
+      });
+      return property;
+    } catch (error) {
+      if (error instanceof Error && error.name === 'ZodError') {
+        reply.status(400).send({ error: 'Validation error', details: error });
+      } else {
+        fastify.log.error(error);
+        reply.status(500).send({ error: 'Failed to update property' });
+      }
+    }
+  });
+
+  // DELETE /api/utilities/properties/:id - Delete a property (only if no meters)
+  fastify.delete('/utilities/properties/:id', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+
+      const meterCount = await prisma.meter.count({ where: { propertyId: id } });
+      if (meterCount > 0) {
+        return reply.code(400).send({
+          error: 'Cannot delete property with meters. Remove or reassign meters first.',
+        });
+      }
+
+      await prisma.property.delete({ where: { id } });
+      reply.status(204).send();
+    } catch (error) {
+      fastify.log.error(error);
+      reply.status(500).send({ error: 'Failed to delete property' });
+    }
+  });
+
+  // === Meter CRUD ===
+
+  // GET /api/utilities/meters - List meters (active or including archived, optionally filtered by property)
   fastify.get('/utilities/meters', async (request, reply) => {
     try {
-      const { includeArchived } = request.query as { includeArchived?: string };
+      const { includeArchived, propertyId } = request.query as { includeArchived?: string; propertyId?: string };
+
+      const where: any = {};
+      if (includeArchived !== 'true') where.deletedAt = null;
+      if (propertyId) where.propertyId = propertyId;
 
       const meters = await prisma.meter.findMany({
-        where: includeArchived === 'true' ? {} : { deletedAt: null },
+        where,
         orderBy: { createdAt: 'desc' },
         include: {
           _count: {
