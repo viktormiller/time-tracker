@@ -48,7 +48,7 @@ export function PropertySelector({
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-750 transition text-sm font-medium text-gray-900 dark:text-white shadow-sm"
+        className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition text-sm font-medium text-gray-900 dark:text-white shadow-sm"
       >
         <Home size={16} className="text-gray-500 dark:text-gray-400" />
         <span>{selected?.name || 'Wohnung wählen'}</span>
@@ -59,21 +59,23 @@ export function PropertySelector({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full mt-1 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-30">
+        <div className="absolute left-0 top-full mt-1 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-30">
           {/* Active properties */}
           {active.map(p => (
             <div key={p.id} className="flex items-center group">
               <button
                 onClick={() => { onSelect(p.id); setOpen(false); }}
-                className={`flex-1 px-4 py-2.5 text-left text-sm flex items-center gap-2 transition ${
+                className={`flex-1 overflow-hidden min-w-0 px-4 py-2.5 text-left text-sm flex items-center gap-2 transition ${
                   p.id === selectedPropertyId
                     ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300'
                     : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
                 }`}
               >
-                <Home size={14} />
-                <span className="font-medium">{p.name}</span>
-                {p.address && <span className="text-xs text-gray-400 dark:text-gray-500 truncate ml-auto">{p.address}</span>}
+                <Home size={14} className="shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <span className="font-medium">{p.name}</span>
+                  {p.address && <div className="text-xs text-gray-400 dark:text-gray-500 truncate">{p.address}</div>}
+                </div>
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onEdit(p); setOpen(false); }}
