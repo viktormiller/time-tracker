@@ -91,18 +91,6 @@ export function Utilities({ onBack }: UtilitiesProps) {
 
       const response = await axios.get<Meter[]>(`/api/utilities/meters${queryStr}`);
       setMeters(response.data);
-
-      // Auto-select first meter of active tab
-      const activeMeters = response.data.filter(m => !m.deletedAt);
-      const metersOfType = activeMeters.filter(m => m.type === activeTab);
-      if (metersOfType.length > 0) {
-        const firstMeter = metersOfType[0];
-        setSelectedMeterId(firstMeter.id);
-        await fetchReadings(firstMeter.id);
-      } else {
-        setSelectedMeterId(null);
-        setReadings([]);
-      }
     } catch (err) {
       console.error('Failed to fetch meters:', err);
       toast.error('Fehler beim Laden der Zähler');
@@ -177,16 +165,17 @@ export function Utilities({ onBack }: UtilitiesProps) {
   }, [selectedPropertyId, showArchived]);
 
   useEffect(() => {
-    const metersOfType = meters.filter(m => m.type === activeTab);
+    const metersOfType = meters.filter(m => m.type === activeTab && !m.deletedAt);
     if (metersOfType.length > 0) {
       const firstMeter = metersOfType[0];
       setSelectedMeterId(firstMeter.id);
+      setReadings([]);
       fetchReadings(firstMeter.id);
     } else {
       setSelectedMeterId(null);
       setReadings([]);
     }
-  }, [activeTab]);
+  }, [activeTab, meters]);
 
   // Calculate meter counts by type (only active meters)
   const meterCounts = {
