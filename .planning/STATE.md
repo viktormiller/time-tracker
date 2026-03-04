@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-06)
 
 **Core value:** See all important numbers in one place — worked hours and utility consumption, regardless of source.
-**Current focus:** v2.1 UX & Security Improvements
+**Current focus:** v2.0 Utility Tracking (resume Phase 7)
 
 ## Current Position
 
-Phase: 11 of 13 (Login Fix & Session Security)
+Phase: v2.1 complete, v2.0 Phase 7 paused (3/4 plans)
 Plan: —
-Status: Starting
-Last activity: 2026-03-04 — Milestone v2.1 started
+Status: v2.1 shipped, resuming v2.0
+Last activity: 2026-03-04 — Milestone v2.1 completed
 
-Progress: [░░░░░░░░░░░░░░░░░░░░] 0% (v2.1: 0/3 phases)
+Progress: [████████████████████] 100% (v2.1: 3/3 phases + additions)
 
 ## Performance Metrics
 
@@ -29,11 +29,16 @@ Progress: [░░░░░░░░░░░░░░░░░░░░] 0% (v2.
 - Additional fixes: dark mode dropdown reactivity, v1.0.1 version bump
 - Commits: 6
 
+**v2.1 UX & Security:**
+- Total phases: 3 (phases 11-13) + 2 additions
+- Completed: All (shipped 2026-03-04)
+- Commits: 4 (006e6fe, 495f201, 4e1fbaf, ab153f8)
+
 **v2.0 Progress:**
 - Total phases: 4 (phases 7-10)
 - Total plans: 4+ (Phase 7 has 4 plans, others TBD)
 - Completed: 3 (07-01: Database schema, 07-02: Frontend shell, 07-03: Backend API)
-- In progress: Phase 7 (3/4 plans complete)
+- Paused: Phase 7 (3/4 plans complete)
 
 ## Accumulated Context
 
@@ -79,7 +84,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-02-06T10:16:26Z (Phase 7 Plan 03 execution)
-Stopped at: Completed 07-03-PLAN.md (Backend API routes with CRUD, monotonic validation, photo upload)
+Last session: 2026-03-04 (v2.1 milestone completion)
+Stopped at: v2.1 shipped — all 3 phases + weekly comparison + badge tooltips
 Resume file: None
-Next: Execute 07-04-PLAN.md (Frontend CRUD implementation)
+Next: Resume v2.0 Phase 7, execute 07-04-PLAN.md (Frontend CRUD implementation)

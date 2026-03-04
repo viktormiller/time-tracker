@@ -12,20 +12,18 @@ Tracking time across multiple systems and utility consumption across meters make
 
 **See all important numbers in one place** — worked hours and utility consumption, regardless of source.
 
-## Current Milestone: v2.1 UX & Security Improvements
-
-**Goal:** Improve navigation UX, fix login visibility, tighten session security, and add daily hours comparison.
-
-**Target features:**
-- Collapsible sidebar navigation (move Verbrauch, Schätzungen, Settings from header)
-- Login form dark mode support and text visibility fix
-- Session expiry reduced to 7 days with user warning
-- Daily hours comparison percentage badge on STUNDEN HEUTE card
-
-## Paused Milestone: v2.0 Utility Tracking (Phase 7 of 10)
+## Current Milestone: v2.0 Utility Tracking (Phase 7 of 10)
 
 **Goal:** Add utility meter tracking with OCR, charts, and import.
-**Status:** Paused at Phase 7 (3/4 plans complete). Resume after v2.1.
+**Status:** Paused at Phase 7 (3/4 plans complete). Resuming after v2.1 completion.
+
+## Shipped Milestone: v2.1 UX & Security Improvements (2026-03-04)
+
+**Delivered:**
+- Collapsible sidebar navigation with localStorage persistence
+- Login form dark mode fix
+- Session expiry reduced to 7 days with user warning
+- Daily/weekly hours comparison percentage badges with instant tooltips
 
 ## Current State
 
@@ -60,6 +58,12 @@ Tracking time across multiple systems and utility consumption across meters make
 - [x] Go CLI shows weekly summary — v1.0
 - [x] Go CLI triggers sync via backend API — v1.0
 - [x] Clean provider abstraction for adding new sources — v1.0
+- [x] Collapsible sidebar navigation with localStorage persistence — v2.1
+- [x] Login form dark mode support — v2.1
+- [x] Session expiry reduced to 7 days with warning toast — v2.1
+- [x] Daily hours comparison badge (vs same day one month ago) — v2.1
+- [x] Weekly hours comparison badge (vs same partial week one month ago) — v2.1
+- [x] Instant tooltips on comparison badges showing date/hours — v2.1
 
 ### Active
 
@@ -130,4 +134,4 @@ Tracking time across multiple systems and utility consumption across meters make
 7. Excel history imported so trends are visible from day one
 
 ---
-*Last updated: 2026-02-06 after v2.0 milestone start*
+*Last updated: 2026-03-04 after v2.1 milestone shipped*

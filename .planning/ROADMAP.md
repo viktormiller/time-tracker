@@ -3,7 +3,8 @@
 ## Milestones
 
 - **v1.0 MVP** — Phases 1-6 (shipped 2026-02-06) — [Archive](milestones/v1.0-ROADMAP.md)
-- **v2.0 Utility Tracking** — Phases 7-10 (in progress)
+- **v2.1 UX & Security** — Phases 11-13 (shipped 2026-03-04)
+- **v2.0 Utility Tracking** — Phases 7-10 (in progress, paused at Phase 7)
 
 ## Phases
 
@@ -18,6 +19,16 @@
 - [x] Phase 6: CLI Tool (pre-existing) — completed 2026-01-29
 
 </details>
+
+## v2.1 UX & Security Improvements (Phases 11-13) — SHIPPED 2026-03-04
+
+**Milestone Goal:** Improve navigation UX, fix login dark mode, tighten session security, and add hours comparison badges.
+
+- [x] Phase 11: Login Fix & Session Security — completed 2026-03-04
+- [x] Phase 12: Collapsible Sidebar Navigation — completed 2026-03-04
+- [x] Phase 13: Daily Hours Comparison Percentage — completed 2026-03-04
+- [x] Addition: Weekly Hours Comparison Percentage — completed 2026-03-04
+- [x] Addition: Instant Tooltips on Comparison Badges — completed 2026-03-04
 
 ## v2.0 Utility Tracking (Phases 7-10)
 
@@ -115,7 +126,10 @@ Plans:
 | 4. UX Enhancements | v1.0 | 4/4 | Complete | 2026-01-22 |
 | 5. Manual Entry & Provider Abstraction | v1.0 | Pre-existing | Complete | 2026-01-29 |
 | 6. CLI Tool | v1.0 | Pre-existing | Complete | 2026-01-29 |
-| 7. Foundation | v2.0 | 0/4 | Not started | - |
+| 7. Foundation | v2.0 | 3/4 | Paused | - |
 | 8. Manual Entry & Basic Visualization | v2.0 | 0/? | Not started | - |
 | 9. Excel Import | v2.0 | 0/? | Not started | - |
 | 10. Advanced Visualization | v2.0 | 0/? | Not started | - |
+| 11. Login Fix & Session Security | v2.1 | Done | Complete | 2026-03-04 |
+| 12. Collapsible Sidebar Navigation | v2.1 | Done | Complete | 2026-03-04 |
+| 13. Daily/Weekly Hours Comparison | v2.1 | Done | Complete | 2026-03-04 |
