@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import {
   Upload, Loader2, RefreshCw, Filter, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown,
-  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut, Download, FileText, Plus, Gauge
+  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut, Download, FileText, Plus, Gauge, Menu
 } from 'lucide-react';
 import {
   format, parseISO, isSameDay, startOfToday, endOfToday,
@@ -116,6 +116,24 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
 
   // --- VIEW STATE ---
   const [currentView, setCurrentView] = useState<'dashboard' | 'add-entry' | 'settings' | 'estimates' | 'utilities'>('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('sidebarOpen') !== 'false');
+
+  const toggleSidebar = () => {
+    setSidebarOpen(prev => {
+      const next = !prev;
+      localStorage.setItem('sidebarOpen', String(next));
+      return next;
+    });
+  };
+
+  const navigateTo = (view: typeof currentView) => {
+    setCurrentView(view);
+    // Close sidebar on mobile after navigation
+    if (window.innerWidth < 768) {
+      setSidebarOpen(false);
+      localStorage.setItem('sidebarOpen', 'false');
+    }
+  };
 
   // --- STATE ---
   const [entries, setEntries] = useState<TimeEntry[]>([]);
@@ -458,62 +476,143 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
     catch (error) { toast.error('Fehler beim Upload.'); } finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
-  // Render Add Entry page if selected
-  if (currentView === 'add-entry') {
-    return (
-      <AddEntry
-        onBack={() => setCurrentView('dashboard')}
-        onSuccess={handleAddEntrySuccess}
-        existingProjects={uniqueProjects}
-      />
-    );
-  }
-
-  // Render Settings page if selected
-  if (currentView === 'settings') {
-    return (
-      <SettingsPage
-        onBack={() => setCurrentView('dashboard')}
-        onLimitsChanged={reloadHourLimits}
-      />
-    );
-  }
-
-  // Render Estimates page if selected
-  if (currentView === 'estimates') {
-    return (
-      <Estimates
-        onBack={() => setCurrentView('dashboard')}
-      />
-    );
-  }
-
-  // Render Utilities page if selected
-  if (currentView === 'utilities') {
-    return (
-      <Utilities onBack={() => setCurrentView('dashboard')} />
-    );
-  }
+  // Helper to render the current view content
+  const renderContent = () => {
+    switch (currentView) {
+      case 'add-entry':
+        return (
+          <AddEntry
+            onBack={() => setCurrentView('dashboard')}
+            onSuccess={handleAddEntrySuccess}
+            existingProjects={uniqueProjects}
+          />
+        );
+      case 'settings':
+        return (
+          <SettingsPage
+            onBack={() => setCurrentView('dashboard')}
+            onLimitsChanged={reloadHourLimits}
+          />
+        );
+      case 'estimates':
+        return (
+          <Estimates
+            onBack={() => setCurrentView('dashboard')}
+          />
+        );
+      case 'utilities':
+        return (
+          <Utilities onBack={() => setCurrentView('dashboard')} />
+        );
+      default:
+        return null; // Dashboard renders below
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-6 font-sans relative">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 font-sans relative flex">
+      {/* SIDEBAR BACKDROP (mobile) */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-30 md:hidden"
+          onClick={toggleSidebar}
+        />
+      )}
+
+      {/* SIDEBAR */}
+      <aside className={`fixed md:sticky top-0 left-0 z-40 h-screen w-56 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">vihais Tracker</h2>
+        </div>
+        <nav className="flex-1 p-3 space-y-1">
+          <button
+            onClick={() => navigateTo('dashboard')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-sm font-medium ${
+              currentView === 'dashboard'
+                ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30'
+                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+            }`}
+          >
+            <CalendarIcon size={18} />
+            Dashboard
+          </button>
+          <button
+            onClick={() => navigateTo('utilities')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-sm font-medium ${
+              currentView === 'utilities'
+                ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30'
+                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+            }`}
+          >
+            <Gauge size={18} />
+            Verbrauch
+          </button>
+          <button
+            onClick={() => navigateTo('estimates')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-sm font-medium ${
+              currentView === 'estimates'
+                ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30'
+                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+            }`}
+          >
+            <Layers size={18} />
+            Schätzungen
+          </button>
+          <button
+            onClick={() => navigateTo('settings')}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-sm font-medium ${
+              currentView === 'settings'
+                ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30'
+                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+            }`}
+          >
+            <Settings size={18} />
+            Settings
+          </button>
+        </nav>
+        <div className="p-3 border-t border-gray-200 dark:border-gray-700">
+          <button
+            onClick={logout}
+            className="w-full flex items-center gap-3 px-3 py-2.5 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition text-sm font-medium"
+          >
+            <LogOut size={18} />
+            Logout
+          </button>
+        </div>
+      </aside>
+
+      {/* MAIN CONTENT */}
+      <div className="flex-1 min-w-0">
       {/* MODALS */}
       {editingEntry && <EditModal entry={editingEntry} onClose={() => setEditingEntry(null)} onSave={updateEntry} />}
 
       {showSyncModal && (
-        <SyncModal 
-            service={showSyncModal} // 'TOGGL' oder 'TEMPO' übergeben
-            onClose={() => setShowSyncModal(null)} 
-            onSync={(start, end) => showSyncModal === 'TOGGL' ? syncToggl(start, end) : syncTempo(start, end)} 
-            syncing={syncing} 
+        <SyncModal
+            service={showSyncModal}
+            onClose={() => setShowSyncModal(null)}
+            onSync={(start, end) => showSyncModal === 'TOGGL' ? syncToggl(start, end) : syncTempo(start, end)}
+            syncing={syncing}
         />
       )}
 
+      {/* SUB-PAGES */}
+      {currentView !== 'dashboard' && renderContent()}
+
+      {/* DASHBOARD */}
+      {currentView === 'dashboard' && (
+      <div className="p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* HEADER */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">vihais Tracker</h1>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={toggleSidebar}
+              className="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"
+              title="Toggle sidebar"
+            >
+              <Menu size={20} />
+            </button>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
           </div>
           <div className="flex flex-wrap items-center gap-3">
                {/* TIMEZONE SELECTOR */}
@@ -527,48 +626,6 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
 
                <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
 
-               {/* UTILITIES BUTTON */}
-               <button
-                 onClick={() => setCurrentView('utilities')}
-                 className={getNavButtonClass('utilities')}
-                 title="Verbrauch"
-               >
-                 <Gauge size={18} />
-                 <span className="hidden md:inline">Verbrauch</span>
-               </button>
-
-               {/* ESTIMATES BUTTON */}
-               <button
-                 onClick={() => setCurrentView('estimates')}
-                 className={getNavButtonClass('estimates')}
-                 title="Schätzungen"
-               >
-                 <Layers size={18} />
-                 <span className="hidden md:inline">Schätzungen</span>
-               </button>
-
-               {/* SETTINGS BUTTON */}
-               <button
-                 onClick={() => setCurrentView('settings')}
-                 className="flex items-center gap-2 px-3 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition text-sm font-medium"
-                 title="Settings"
-               >
-                 <Settings size={18} />
-                 <span className="hidden md:inline">Settings</span>
-               </button>
-
-               {/* LOGOUT BUTTON */}
-               <button
-                 onClick={logout}
-                 className="flex items-center gap-2 px-3 py-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition text-sm font-medium"
-                 title="Logout"
-               >
-                 <LogOut size={18} />
-                 <span className="hidden md:inline">Logout</span>
-               </button>
-
-               <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
-
                {/* SYNC GROUP */}
               <div className="flex items-center rounded-lg border border-pink-200 dark:border-pink-900 bg-pink-50 dark:bg-pink-900 p-0.5 mr-2">
                   <button onClick={() => syncToggl()} disabled={syncing} className="flex items-center gap-2 px-3 py-2 text-pink-700 dark:text-white hover:bg-pink-100 dark:hover:bg-pink-800 rounded-l-md transition text-sm font-medium">
@@ -578,7 +635,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                   <button onClick={() => setShowSyncModal('TOGGL')} className="px-2 py-2 text-pink-700 dark:text-white hover:bg-pink-100 dark:hover:bg-pink-800 rounded-r-md transition"><Settings size={18} /></button>
               </div>
 
-              {/* TEMPO SYNC GROUP - Blau gehalten für Jira */}
+              {/* TEMPO SYNC GROUP */}
               <div className="flex items-center rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-900 p-0.5">
                   <button onClick={() => syncTempo()} disabled={syncing} className="flex items-center gap-2 px-3 py-2 text-blue-700 dark:text-white hover:bg-blue-100 dark:hover:bg-blue-800 rounded-l-md transition text-sm font-medium">
                       <Layers size={18} className={syncing ? "animate-pulse" : ""} /> <span className="hidden md:inline">Tempo</span>
@@ -829,6 +886,9 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
               {tableEntries.length === 0 && <div className="p-10 text-center text-gray-400 dark:text-gray-500">Keine Einträge {selectedDay ? 'an diesem Tag' : 'im gewählten Zeitraum'}.</div>}
           </div>
         </div>
+      </div>
+      </div>
+      )}
       </div>
     </div>
   );
