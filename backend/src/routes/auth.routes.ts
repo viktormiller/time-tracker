@@ -78,10 +78,10 @@ export default async function (fastify: FastifyInstance) {
       { expiresIn: '15m' }
     );
 
-    // Generate refresh token (long-lived: 30 days)
+    // Generate refresh token (long-lived: 7 days)
     const refreshToken = fastify.jwt.sign(
       { userId: 1, type: 'refresh' },
-      { expiresIn: '30d' }
+      { expiresIn: '7d' }
     );
 
     // Store refresh token in HttpOnly cookie (CSRF protection)
@@ -90,7 +90,7 @@ export default async function (fastify: FastifyInstance) {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       path: '/',
-      maxAge: 30 * 24 * 60 * 60, // 30 days in seconds
+      maxAge: 7 * 24 * 60 * 60, // 7 days in seconds
     });
 
     // Return access token to client
@@ -135,7 +135,7 @@ export default async function (fastify: FastifyInstance) {
     // Generate NEW refresh token (rotation prevents token reuse)
     const newRefreshToken = fastify.jwt.sign(
       { userId: decoded.userId, type: 'refresh' },
-      { expiresIn: '30d' }
+      { expiresIn: '7d' }
     );
 
     // Update refresh token cookie
@@ -144,7 +144,7 @@ export default async function (fastify: FastifyInstance) {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       path: '/',
-      maxAge: 30 * 24 * 60 * 60, // 30 days in seconds
+      maxAge: 7 * 24 * 60 * 60, // 7 days in seconds
     });
 
     // Return new access token
@@ -232,10 +232,10 @@ export default async function (fastify: FastifyInstance) {
         { expiresIn: '15m' }
       );
 
-      // Generate refresh token (long-lived: 30 days)
+      // Generate refresh token (long-lived: 7 days)
       const refreshToken = fastify.jwt.sign(
         { userId: 1, type: 'refresh' },
-        { expiresIn: '30d' }
+        { expiresIn: '7d' }
       );
 
       // Return BOTH tokens in response body (for CLI use)
@@ -283,7 +283,7 @@ export default async function (fastify: FastifyInstance) {
     // Generate NEW refresh token (rotation prevents token reuse)
     const newRefreshToken = fastify.jwt.sign(
       { userId: decoded.userId, type: 'refresh' },
-      { expiresIn: '30d' }
+      { expiresIn: '7d' }
     );
 
     // Return new tokens in response body

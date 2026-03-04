@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
 import axios from 'axios';
+import { toast } from '../hooks/useToast';
 
 const API_URL = '/api';
 
@@ -113,6 +114,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Set default authorization header for future requests
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+      // Store login timestamp for session expiry tracking
+      localStorage.setItem('sessionStart', Date.now().toString());
     } catch (error) {
       console.error('Login failed:', error);
       throw error;
@@ -136,6 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccessToken(null);
       setUser(null);
       delete axios.defaults.headers.common['Authorization'];
+      localStorage.removeItem('sessionStart');
     }
   };
 
@@ -144,6 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(null);
     setUser(null);
     delete axios.defaults.headers.common['Authorization'];
+    localStorage.removeItem('sessionStart');
   };
 
   // Restore session on mount
@@ -185,6 +191,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       delete window.authState;
     };
   }, []);
+
+  // Session expiry warning (check every hour)
+  const sessionWarningShown = useRef(false);
+  useEffect(() => {
+    if (!isAuthenticated) {
+      sessionWarningShown.current = false;
+      return;
+    }
+
+    const SESSION_MAX_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+    const WARNING_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 1 day before expiry
+
+    const checkSessionExpiry = () => {
+      const sessionStart = localStorage.getItem('sessionStart');
+      if (!sessionStart) return;
+
+      const elapsed = Date.now() - parseInt(sessionStart, 10);
+      const remaining = SESSION_MAX_MS - elapsed;
+
+      if (remaining <= 0) {
+        toast.warning('Sitzung abgelaufen. Bitte erneut anmelden.');
+        handleLogout();
+      } else if (remaining <= WARNING_THRESHOLD_MS && !sessionWarningShown.current) {
+        sessionWarningShown.current = true;
+        const hoursLeft = Math.round(remaining / (60 * 60 * 1000));
+        toast.warning(`Sitzung läuft in ${hoursLeft}h ab. Bitte erneut anmelden.`);
+      }
+    };
+
+    checkSessionExpiry();
+    const interval = setInterval(checkSessionExpiry, 60 * 60 * 1000); // every hour
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
 
   const value: AuthContextType = {
     user,
