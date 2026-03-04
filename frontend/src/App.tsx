@@ -11,7 +11,7 @@ import {
   format, parseISO, isSameDay, startOfToday, endOfToday,
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   startOfQuarter, endOfQuarter, startOfYear, endOfYear,
-  subWeeks, subMonths, isWithinInterval, addDays, addWeeks, addMonths, addQuarters, addYears, eachDayOfInterval, isWeekend
+  subWeeks, subMonths, isWithinInterval, addDays, addWeeks, addMonths, addQuarters, addYears, eachDayOfInterval, isWeekend, getDay
 } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import { de } from 'date-fns/locale';
@@ -466,19 +466,53 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
       .reduce((acc, curr) => acc + curr.duration, 0);
   }, [entries, datePreset, totalHoursFiltered]);
 
-  const hoursOneMonthAgo = useMemo(() => {
+  const dailyComparisonData = useMemo(() => {
     const tz = getTimezone();
     const nowInTz = toZonedTime(new Date(), tz);
     const oneMonthAgo = subMonths(nowInTz, 1);
-    return entries
+    const hours = entries
       .filter(e => isSameDay(toZonedTime(parseISO(e.date), tz), oneMonthAgo))
       .reduce((acc, curr) => acc + curr.duration, 0);
+    return { hours, date: oneMonthAgo };
   }, [entries]);
 
   const dailyComparison = useMemo(() => {
-    if (hoursOneMonthAgo === 0) return null; // No data for comparison
-    return Math.round(((hoursToday - hoursOneMonthAgo) / hoursOneMonthAgo) * 100);
-  }, [hoursToday, hoursOneMonthAgo]);
+    if (dailyComparisonData.hours === 0) return null;
+    return Math.round(((hoursToday - dailyComparisonData.hours) / dailyComparisonData.hours) * 100);
+  }, [hoursToday, dailyComparisonData]);
+
+  const dailyComparisonTooltip = useMemo(() => {
+    if (dailyComparisonData.hours === 0) return undefined;
+    return `${format(dailyComparisonData.date, 'd. MMM yyyy', { locale: de })}: ${dailyComparisonData.hours.toFixed(2)}h`;
+  }, [dailyComparisonData]);
+
+  // Weekly comparison: compare this week's hours (Mon-today) vs same partial week one month ago
+  const weeklyComparisonData = useMemo(() => {
+    const tz = getTimezone();
+    const nowInTz = toZonedTime(new Date(), tz);
+    const oneMonthAgo = subMonths(nowInTz, 1);
+    const todayDow = (getDay(nowInTz) + 6) % 7; // 0=Mon, 6=Sun
+    const compWeekStart = startOfWeek(oneMonthAgo, { weekStartsOn: 1 });
+    const compWeekEnd = addDays(compWeekStart, todayDow);
+    const hours = entries
+      .filter(e => {
+        const d = toZonedTime(parseISO(e.date), tz);
+        return isWithinInterval(d, { start: compWeekStart, end: compWeekEnd });
+      })
+      .reduce((acc, curr) => acc + curr.duration, 0);
+    return { hours, start: compWeekStart, end: compWeekEnd };
+  }, [entries]);
+
+  const weeklyComparison = useMemo(() => {
+    if (weeklyComparisonData.hours === 0) return null;
+    return Math.round(((hoursThisWeek - weeklyComparisonData.hours) / weeklyComparisonData.hours) * 100);
+  }, [hoursThisWeek, weeklyComparisonData]);
+
+  const weeklyComparisonTooltip = useMemo(() => {
+    if (weeklyComparisonData.hours === 0) return undefined;
+    const { start, end, hours } = weeklyComparisonData;
+    return `${format(start, 'EEE d.', { locale: de })} – ${format(end, 'EEE d. MMM yyyy', { locale: de })}: ${hours.toFixed(2)}h`;
+  }, [weeklyComparisonData]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -752,7 +786,8 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                 : dailyComparison < 0
                   ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                  : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                  : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+              tooltip: dailyComparisonTooltip
             } : null}
           />
           <Card title="Summe im Zeitraum" value={totalHoursFiltered.toFixed(2)} unit="h" color="text-gray-900 dark:text-gray-100" />
@@ -765,6 +800,15 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
               color="text-indigo-600"
               target={hourLimits.weeklyLimit.toFixed(2)}
               targetColor={hoursThisWeek >= hourLimits.weeklyLimit ? 'text-green-600 dark:text-green-400' : 'text-orange-500 dark:text-orange-400'}
+              badge={weeklyComparison !== null ? {
+                text: `${weeklyComparison > 0 ? '+' : ''}${weeklyComparison}%`,
+                color: weeklyComparison > 0
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                  : weeklyComparison < 0
+                    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                    : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+                tooltip: weeklyComparisonTooltip
+              } : null}
             />
           )}
         </div>
@@ -1096,7 +1140,7 @@ function EditModal({ entry, onClose, onSave }: { entry: TimeEntry, onClose: () =
     );
 }
 
-function Card({ title, value, unit, color, target, targetColor, badge }: { title: string, value: string, unit: string, color: string, target?: string, targetColor?: string, badge?: { text: string, color: string } | null }) {
+function Card({ title, value, unit, color, target, targetColor, badge }: { title: string, value: string, unit: string, color: string, target?: string, targetColor?: string, badge?: { text: string, color: string, tooltip?: string } | null }) {
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">{title}</p>
@@ -1105,8 +1149,13 @@ function Card({ title, value, unit, color, target, targetColor, badge }: { title
             {target && <span className="text-lg text-gray-400 dark:text-gray-500 font-medium">/ {target}</span>}
             <span className="text-gray-400 dark:text-gray-500 font-medium">{unit}</span>
             {badge && (
-              <span className={`ml-2 text-xs font-semibold px-1.5 py-0.5 rounded ${badge.color}`}>
+              <span className={`relative ml-2 text-xs font-semibold px-1.5 py-0.5 rounded cursor-default group ${badge.color}`}>
                 {badge.text}
+                {badge.tooltip && (
+                  <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 whitespace-nowrap rounded bg-gray-900 dark:bg-gray-700 px-2 py-1 text-xs font-normal text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                    {badge.tooltip}
+                  </span>
+                )}
               </span>
             )}
           </div>
