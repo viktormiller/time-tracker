@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-06)
 
 **Core value:** See all important numbers in one place — worked hours and utility consumption, regardless of source.
-**Current focus:** v2.0 Utility Tracking - Phase 7 Foundation
+**Current focus:** v2.1 UX & Security Improvements
 
 ## Current Position
 
-Phase: 7 of 10 (Foundation)
-Plan: 3 of 4
-Status: In progress
-Last activity: 2026-02-06 — Completed 07-03-PLAN.md (Backend API Routes)
+Phase: 11 of 13 (Login Fix & Session Security)
+Plan: —
+Status: Starting
+Last activity: 2026-03-04 — Milestone v2.1 started
 
-Progress: [███████████████░░░░░] 75% (Phase 7: 3/4 plans)
+Progress: [░░░░░░░░░░░░░░░░░░░░] 0% (v2.1: 0/3 phases)
 
 ## Performance Metrics
 

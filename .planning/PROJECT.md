@@ -12,22 +12,20 @@ Tracking time across multiple systems and utility consumption across meters make
 
 **See all important numbers in one place** — worked hours and utility consumption, regardless of source.
 
-## Current Milestone: v2.0 Utility Tracking
+## Current Milestone: v2.1 UX & Security Improvements
 
-**Goal:** Add utility meter tracking (electricity, gas, hot water) with OCR meter reading, dynamic year-over-year charts, and data import — as a new section alongside time tracking.
+**Goal:** Improve navigation UX, fix login visibility, tighten session security, and add daily hours comparison.
 
 **Target features:**
-- Utility meter reading storage (Strom, Gas, Wasser Warm) with automatic consumption calculation
-- OCR from phone photos of digital meter displays (photo → prefill → confirm)
-- Manual meter reading input
-- Excel import for historical data
-- Dynamic year-over-year bar charts with selectable comparison ranges (2/3/5 years)
-- Consumption trend lines
-- Cumulative yearly tracker (running totals by year)
-- Monthly anomaly detection (flag unusual consumption)
-- Cost overlay with configurable per-unit rates (€/kWh, €/m³)
-- Seasonal heatmap (months × years, color-coded by intensity)
-- Forecast projection (predict remaining year based on history)
+- Collapsible sidebar navigation (move Verbrauch, Schätzungen, Settings from header)
+- Login form dark mode support and text visibility fix
+- Session expiry reduced to 7 days with user warning
+- Daily hours comparison percentage badge on STUNDEN HEUTE card
+
+## Paused Milestone: v2.0 Utility Tracking (Phase 7 of 10)
+
+**Goal:** Add utility meter tracking with OCR, charts, and import.
+**Status:** Paused at Phase 7 (3/4 plans complete). Resume after v2.1.
 
 ## Current State
 
