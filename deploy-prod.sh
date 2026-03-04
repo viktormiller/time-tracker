@@ -20,6 +20,21 @@ NC='\033[0m' # No Color
 # Navigate to project directory
 cd "$PROJECT_DIR"
 
+# Pre-check: Disk space
+DISK_USAGE=$(df / --output=pcent | tail -1 | tr -d ' %')
+if [ "$DISK_USAGE" -ge 90 ]; then
+    echo -e "${YELLOW}⚠ Disk usage at ${DISK_USAGE}% — cleaning Docker resources...${NC}"
+    docker builder prune -af --filter "until=24h" 2>/dev/null || true
+    docker image prune -af --filter "until=24h" 2>/dev/null || true
+    docker container prune -f 2>/dev/null || true
+    DISK_USAGE_AFTER=$(df / --output=pcent | tail -1 | tr -d ' %')
+    echo -e "${GREEN}✓ Disk usage after cleanup: ${DISK_USAGE_AFTER}%${NC}"
+    if [ "$DISK_USAGE_AFTER" -ge 95 ]; then
+        echo -e "${RED}✗ Disk still at ${DISK_USAGE_AFTER}%. Free space manually before deploying.${NC}"
+        exit 1
+    fi
+fi
+
 # Step 1: Create backup
 echo -e "${YELLOW}[1/6] Creating backup...${NC}"
 mkdir -p "$BACKUP_DIR"
@@ -45,6 +60,12 @@ echo -e "${GREEN}✓ Containers stopped${NC}"
 echo -e "${YELLOW}[4/6] Building new images...${NC}"
 docker-compose $COMPOSE_FILES build --no-cache
 echo -e "${GREEN}✓ Images built${NC}"
+
+# Step 4b: Clean up old images and build cache
+echo -e "${YELLOW}[4b/6] Cleaning up old Docker resources...${NC}"
+docker image prune -f 2>/dev/null || true
+docker builder prune -af --filter "until=1h" 2>/dev/null || true
+echo -e "${GREEN}✓ Old images and build cache removed${NC}"
 
 # Step 5: Start containers
 echo -e "${YELLOW}[5/6] Starting containers...${NC}"
