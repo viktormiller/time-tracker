@@ -466,6 +466,20 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
       .reduce((acc, curr) => acc + curr.duration, 0);
   }, [entries, datePreset, totalHoursFiltered]);
 
+  const hoursOneMonthAgo = useMemo(() => {
+    const tz = getTimezone();
+    const nowInTz = toZonedTime(new Date(), tz);
+    const oneMonthAgo = subMonths(nowInTz, 1);
+    return entries
+      .filter(e => isSameDay(toZonedTime(parseISO(e.date), tz), oneMonthAgo))
+      .reduce((acc, curr) => acc + curr.duration, 0);
+  }, [entries]);
+
+  const dailyComparison = useMemo(() => {
+    if (hoursOneMonthAgo === 0) return null; // No data for comparison
+    return Math.round(((hoursToday - hoursOneMonthAgo) / hoursOneMonthAgo) * 100);
+  }, [hoursToday, hoursOneMonthAgo]);
+
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -732,6 +746,14 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
             color="text-indigo-600"
             target={hourLimits.dailyLimit ? hourLimits.dailyLimit.toFixed(2) : undefined}
             targetColor={hourLimits.dailyLimit ? (hoursToday >= hourLimits.dailyLimit ? 'text-green-600 dark:text-green-400' : 'text-orange-500 dark:text-orange-400') : undefined}
+            badge={dailyComparison !== null ? {
+              text: `${dailyComparison > 0 ? '+' : ''}${dailyComparison}%`,
+              color: dailyComparison > 0
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                : dailyComparison < 0
+                  ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                  : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+            } : null}
           />
           <Card title="Summe im Zeitraum" value={totalHoursFiltered.toFixed(2)} unit="h" color="text-gray-900 dark:text-gray-100" />
           <Card title="Einträge" value={filteredEntries.length.toString()} unit="#" color="text-gray-600 dark:text-gray-100" />
@@ -1074,7 +1096,7 @@ function EditModal({ entry, onClose, onSave }: { entry: TimeEntry, onClose: () =
     );
 }
 
-function Card({ title, value, unit, color, target, targetColor }: { title: string, value: string, unit: string, color: string, target?: string, targetColor?: string }) {
+function Card({ title, value, unit, color, target, targetColor, badge }: { title: string, value: string, unit: string, color: string, target?: string, targetColor?: string, badge?: { text: string, color: string } | null }) {
     return (
         <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">{title}</p>
@@ -1082,6 +1104,11 @@ function Card({ title, value, unit, color, target, targetColor }: { title: strin
             <span className={`text-3xl font-bold ${targetColor || color}`}>{value}</span>
             {target && <span className="text-lg text-gray-400 dark:text-gray-500 font-medium">/ {target}</span>}
             <span className="text-gray-400 dark:text-gray-500 font-medium">{unit}</span>
+            {badge && (
+              <span className={`ml-2 text-xs font-semibold px-1.5 py-0.5 rounded ${badge.color}`}>
+                {badge.text}
+              </span>
+            )}
           </div>
         </div>
     );
