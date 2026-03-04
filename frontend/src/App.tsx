@@ -384,15 +384,6 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
     exportToCSV(filteredEntries, dateRange);
   };
 
-  // Helper function for nav button styling
-  const getNavButtonClass = (view: typeof currentView) => {
-    return `flex items-center gap-2 px-3 py-2 ${
-      currentView === view
-        ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30'
-        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-    } rounded-lg transition text-sm font-medium`;
-  };
-
   const handleExportPDF = async () => {
     if (filteredEntries.length === 0) {
       toast.warning('Keine Einträge zum Exportieren vorhanden.');
