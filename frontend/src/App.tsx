@@ -11,7 +11,7 @@ import {
   format, parseISO, isSameDay, startOfToday, endOfToday,
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
   startOfQuarter, endOfQuarter, startOfYear, endOfYear,
-  subWeeks, subMonths, isWithinInterval, addDays, addWeeks, addMonths, addQuarters, addYears, eachDayOfInterval, isWeekend, getDay
+  subWeeks, subMonths, isWithinInterval, addDays, addWeeks, addMonths, addQuarters, addYears, eachDayOfInterval, isWeekend, getDay, endOfDay
 } from 'date-fns';
 import { toZonedTime } from 'date-fns-tz';
 import { de } from 'date-fns/locale';
@@ -484,7 +484,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
     const oneMonthAgo = subMonths(nowInTz, 1);
     const todayDow = (getDay(nowInTz) + 6) % 7; // 0=Mon, 6=Sun
     const compWeekStart = startOfWeek(oneMonthAgo, { weekStartsOn: 1 });
-    const compWeekEnd = addDays(compWeekStart, todayDow);
+    const compWeekEnd = endOfDay(addDays(compWeekStart, todayDow));
     const hours = entries
       .filter(e => {
         const d = toZonedTime(parseISO(e.date), tz);
