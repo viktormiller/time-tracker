@@ -559,7 +559,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
       )}
 
       {/* SIDEBAR */}
-      <aside className={`fixed md:sticky top-0 left-0 z-40 h-screen w-56 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed md:sticky top-0 left-0 z-40 h-screen bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-200 ${sidebarOpen ? 'w-56 translate-x-0' : 'w-0 -translate-x-full'} overflow-hidden`}>
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white">vihais Tracker</h2>
         </div>
