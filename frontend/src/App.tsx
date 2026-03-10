@@ -196,14 +196,14 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const _syncToggl = async (startDate?: string, endDate?: string) => {
       const isCustom = !!startDate && startDate !== '';
       const payload = isCustom ? { startDate, endDate } : {};
-      const res = await axios.post(`${API_URL}/sync/toggl?force=${isCustom}`, payload);
+      const res = await axios.post(`${API_URL}/sync/toggl?force=true`, payload);
       toast.success(`Sync erfolgreich: ${res.data.message} (${res.data.count} Einträge)`);
   };
 
   const _syncTempo = async (startDate?: string, endDate?: string) => {
       const isCustom = !!startDate;
       const payload = isCustom ? { startDate, endDate } : {};
-      const res = await axios.post(`${API_URL}/sync/tempo?force=${isCustom}`, payload);
+      const res = await axios.post(`${API_URL}/sync/tempo?force=true`, payload);
       toast.success(`Tempo Sync erfolgreich: ${res.data.message} (${res.data.count} Einträge)`);
   };
 
