@@ -150,6 +150,8 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
   const [showSyncModal, setShowSyncModal] = useState<'TOGGL' | 'TEMPO' | null>(null);
   const [showDailyLimit, setShowDailyLimit] = useState(true);
+  const [syncDropdownOpen, setSyncDropdownOpen] = useState(false);
+  const syncDropdownRef = useRef<HTMLDivElement>(null);
 
   // Timezone, Jira config, and hour limits state
   const [timezone, setTimezoneState] = useState(getTimezone());
@@ -187,17 +189,24 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
       try { await axios.put(`${API_URL}/entries/${entry.id}`, entry); setEditingEntry(null); fetchData(); } catch (e) { toast.error('Fehler beim Speichern'); }
   };
 
+  const _syncToggl = async (startDate?: string, endDate?: string) => {
+      const isCustom = !!startDate && startDate !== '';
+      const payload = isCustom ? { startDate, endDate } : {};
+      const res = await axios.post(`${API_URL}/sync/toggl?force=${isCustom}`, payload);
+      toast.success(`Sync erfolgreich: ${res.data.message} (${res.data.count} Einträge)`);
+  };
+
+  const _syncTempo = async (startDate?: string, endDate?: string) => {
+      const isCustom = !!startDate;
+      const payload = isCustom ? { startDate, endDate } : {};
+      const res = await axios.post(`${API_URL}/sync/tempo?force=${isCustom}`, payload);
+      toast.success(`Tempo Sync erfolgreich: ${res.data.message} (${res.data.count} Einträge)`);
+  };
+
   const syncToggl = async (startDate?: string, endDate?: string) => {
       setSyncing(true); setShowSyncModal(null);
       try {
-          const isCustom = !!startDate && startDate !== '';
-
-          const payload = isCustom ? { startDate, endDate } : {};
-
-          console.log("Sende an Backend:", payload); // Debug fürs Browser Terminal (F12)
-
-          const res = await axios.post(`${API_URL}/sync/toggl?force=${isCustom}`, payload);
-          toast.success(`Sync erfolgreich: ${res.data.message} (${res.data.count} Einträge)`);
+          await _syncToggl(startDate, endDate);
           fetchData();
       } catch (error) {
           if (axios.isAxiosError(error) && error.response?.data?.error) toast.error(`Fehler beim Toggl Sync: ${error.response.data.error}`);
@@ -208,10 +217,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const syncTempo = async (startDate?: string, endDate?: string) => {
       setSyncing(true); setShowSyncModal(null);
       try {
-          const isCustom = !!startDate;
-          const payload = isCustom ? { startDate, endDate } : {};
-          const res = await axios.post(`${API_URL}/sync/tempo?force=${isCustom}`, payload);
-          toast.success(`Tempo Sync erfolgreich: ${res.data.message} (${res.data.count} Einträge)`);
+          await _syncTempo(startDate, endDate);
           fetchData();
       } catch (error) {
           if (axios.isAxiosError(error) && error.response?.data?.error) toast.error(`Fehler beim Tempo Sync: ${error.response.data.error}`);
@@ -219,8 +225,35 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
       } finally { setSyncing(false); }
   };
 
+  const syncAll = async () => {
+      setSyncing(true); setSyncDropdownOpen(false);
+      try {
+          const results = await Promise.allSettled([_syncToggl(), _syncTempo()]);
+          results.forEach((r, i) => {
+              if (r.status === 'rejected') {
+                  const label = i === 0 ? 'Toggl' : 'Tempo';
+                  const err = r.reason;
+                  if (axios.isAxiosError(err) && err.response?.data?.error) toast.error(`${label} Sync: ${err.response.data.error}`);
+                  else toast.error(`${label} Sync fehlgeschlagen.`);
+              }
+          });
+          fetchData();
+      } finally { setSyncing(false); }
+  };
+
   useEffect(() => { fetchData(); }, []);
   useEffect(() => { setSelectedDay(null); }, [filterSource, filterProject, dateRange]);
+
+  useEffect(() => {
+      const handler = (e: MouseEvent) => {
+          if (syncDropdownRef.current && !syncDropdownRef.current.contains(e.target as Node))
+              setSyncDropdownOpen(false);
+      };
+      if (syncDropdownOpen) {
+          document.addEventListener('mousedown', handler);
+          return () => document.removeEventListener('mousedown', handler);
+      }
+  }, [syncDropdownOpen]);
 
   // Fetch Jira config on mount
   useEffect(() => {
@@ -665,22 +698,68 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
 
                <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
 
-               {/* SYNC GROUP */}
-              <div className="flex items-center rounded-lg border border-pink-200 dark:border-pink-900 bg-pink-50 dark:bg-pink-900 p-0.5 mr-2">
-                  <button onClick={() => syncToggl()} disabled={syncing} className="flex items-center gap-2 px-3 py-2 text-pink-700 dark:text-white hover:bg-pink-100 dark:hover:bg-pink-800 rounded-l-md transition text-sm font-medium">
-                      <CloudLightning size={18} className={syncing ? "animate-pulse" : ""} /> <span className="hidden md:inline">Toggl</span>
+               {/* UNIFIED SYNC BUTTON */}
+              <div className="relative" ref={syncDropdownRef}>
+                <div className="flex items-center rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 p-0.5">
+                  <button
+                    onClick={syncAll}
+                    disabled={syncing}
+                    className="flex items-center gap-2 px-3 py-2 text-gray-700 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 rounded-l-md transition text-sm font-medium disabled:opacity-50"
+                  >
+                    {syncing ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
+                    <span className="hidden md:inline">Sync</span>
                   </button>
-                  <div className="w-px h-5 bg-pink-200 dark:bg-pink-700"></div>
-                  <button onClick={() => setShowSyncModal('TOGGL')} className="px-2 py-2 text-pink-700 dark:text-white hover:bg-pink-100 dark:hover:bg-pink-800 rounded-r-md transition"><Settings size={18} /></button>
-              </div>
+                  <div className="w-px h-5 bg-gray-200 dark:bg-gray-600"></div>
+                  <button
+                    onClick={() => setSyncDropdownOpen(o => !o)}
+                    className="px-2 py-2 text-gray-700 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 rounded-r-md transition"
+                  >
+                    <ChevronDown size={18} />
+                  </button>
+                </div>
 
-              {/* TEMPO SYNC GROUP */}
-              <div className="flex items-center rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-900 p-0.5">
-                  <button onClick={() => syncTempo()} disabled={syncing} className="flex items-center gap-2 px-3 py-2 text-blue-700 dark:text-white hover:bg-blue-100 dark:hover:bg-blue-800 rounded-l-md transition text-sm font-medium">
-                      <Layers size={18} className={syncing ? "animate-pulse" : ""} /> <span className="hidden md:inline">Tempo</span>
-                  </button>
-                  <div className="w-px h-5 bg-blue-200 dark:bg-blue-700"></div>
-                  <button onClick={() => setShowSyncModal('TEMPO')} className="px-2 py-2 text-blue-700 dark:text-white hover:bg-blue-100 dark:hover:bg-blue-800 rounded-r-md transition"><Settings size={18} /></button>
+                {syncDropdownOpen && (
+                  <div className="absolute right-0 mt-1 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50 py-1">
+                    <button
+                      onClick={syncAll}
+                      disabled={syncing}
+                      className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+                    >
+                      <RefreshCw size={16} /> Sync All
+                    </button>
+                    <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
+                    <div className="flex items-center w-full hover:bg-gray-100 dark:hover:bg-gray-700">
+                      <button
+                        onClick={() => { setSyncDropdownOpen(false); syncToggl(); }}
+                        disabled={syncing}
+                        className="flex items-center gap-2 flex-1 px-4 py-2 text-sm text-pink-600 dark:text-pink-400 disabled:opacity-50"
+                      >
+                        <CloudLightning size={16} /> Toggl
+                      </button>
+                      <button
+                        onClick={() => { setSyncDropdownOpen(false); setShowSyncModal('TOGGL'); }}
+                        className="px-3 py-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                      >
+                        <Settings size={14} />
+                      </button>
+                    </div>
+                    <div className="flex items-center w-full hover:bg-gray-100 dark:hover:bg-gray-700">
+                      <button
+                        onClick={() => { setSyncDropdownOpen(false); syncTempo(); }}
+                        disabled={syncing}
+                        className="flex items-center gap-2 flex-1 px-4 py-2 text-sm text-blue-600 dark:text-blue-400 disabled:opacity-50"
+                      >
+                        <Layers size={16} /> Tempo
+                      </button>
+                      <button
+                        onClick={() => { setSyncDropdownOpen(false); setShowSyncModal('TEMPO'); }}
+                        className="px-3 py-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                      >
+                        <Settings size={14} />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
