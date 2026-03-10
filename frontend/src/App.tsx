@@ -152,6 +152,8 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const [showDailyLimit, setShowDailyLimit] = useState(true);
   const [syncDropdownOpen, setSyncDropdownOpen] = useState(false);
   const syncDropdownRef = useRef<HTMLDivElement>(null);
+  const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
+  const exportDropdownRef = useRef<HTMLDivElement>(null);
 
   // Timezone, Jira config, and hour limits state
   const [timezone, setTimezoneState] = useState(getTimezone());
@@ -254,6 +256,17 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
           return () => document.removeEventListener('mousedown', handler);
       }
   }, [syncDropdownOpen]);
+
+  useEffect(() => {
+      const handler = (e: MouseEvent) => {
+          if (exportDropdownRef.current && !exportDropdownRef.current.contains(e.target as Node))
+              setExportDropdownOpen(false);
+      };
+      if (exportDropdownOpen) {
+          document.addEventListener('mousedown', handler);
+          return () => document.removeEventListener('mousedown', handler);
+      }
+  }, [exportDropdownOpen]);
 
   // Fetch Jira config on mount
   useEffect(() => {
@@ -778,21 +791,44 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
 
               <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
               <button onClick={fetchData} className="p-2.5 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"><RefreshCw size={20} className={loading ? "animate-spin" : ""} /></button>
-              <button
-                onClick={handleExportCSV}
-                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-sm text-sm"
-              >
-                <Download size={16} />
-                CSV Export
-              </button>
-              <button
-                onClick={handleExportPDF}
-                disabled={exportingPdf}
-                className="flex items-center gap-2 bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-sm disabled:opacity-50 text-sm"
-              >
-                {exportingPdf ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
-                PDF Export
-              </button>
+
+              {/* UNIFIED EXPORT BUTTON */}
+              <div className="relative" ref={exportDropdownRef}>
+                <div className="flex items-center rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 p-0.5">
+                  <button
+                    onClick={handleExportCSV}
+                    className="flex items-center gap-2 px-3 py-2 text-gray-700 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 rounded-l-md transition text-sm font-medium"
+                  >
+                    <Download size={18} />
+                    <span className="hidden md:inline">Export</span>
+                  </button>
+                  <div className="w-px h-5 bg-gray-200 dark:bg-gray-600"></div>
+                  <button
+                    onClick={() => setExportDropdownOpen(o => !o)}
+                    className="px-2 py-2 text-gray-700 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 rounded-r-md transition"
+                  >
+                    <ChevronDown size={18} />
+                  </button>
+                </div>
+
+                {exportDropdownOpen && (
+                  <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50 py-1">
+                    <button
+                      onClick={() => { setExportDropdownOpen(false); handleExportCSV(); }}
+                      className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <Download size={16} /> CSV Export
+                    </button>
+                    <button
+                      onClick={() => { setExportDropdownOpen(false); handleExportPDF(); }}
+                      disabled={exportingPdf}
+                      className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+                    >
+                      {exportingPdf ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />} PDF Export
+                    </button>
+                  </div>
+                )}
+              </div>
               <div className="relative">
                   <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" className="hidden" />
                   <button onClick={() => fileInputRef.current?.click()} disabled={uploading} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-sm disabled:opacity-50 text-sm">
