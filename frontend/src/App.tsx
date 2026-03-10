@@ -4,7 +4,7 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList, Cell, ReferenceLine
 } from 'recharts';
 import {
-  Upload, Loader2, RefreshCw, Filter, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown,
+  Upload, Loader2, RefreshCw, RotateCw, Filter, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown,
   MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut, Download, FileText, Plus, Gauge, Menu
 } from 'lucide-react';
 import {
@@ -141,6 +141,8 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const [uploading, setUploading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [syncAction, setSyncAction] = useState<'sync-all' | 'refresh' | 'toggl' | 'tempo'>('sync-all');
+  const [exportAction, setExportAction] = useState<'csv' | 'pdf'>('csv');
   
   // Filter & UI States
   const [filterSource, setFilterSource] = useState<string>('ALL');
@@ -475,6 +477,18 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
     }
   };
   
+  const syncActionConfig = {
+    'sync-all': { label: 'Sync',    icon: RefreshCw,      action: syncAll },
+    'refresh':  { label: 'Refresh', icon: RotateCw,       action: fetchData },
+    'toggl':    { label: 'Toggl',   icon: CloudLightning, action: syncToggl },
+    'tempo':    { label: 'Tempo',   icon: Layers,         action: syncTempo },
+  };
+
+  const exportActionConfig = {
+    'csv': { label: 'CSV',  icon: Download, action: handleExportCSV },
+    'pdf': { label: 'PDF',  icon: FileText, action: handleExportPDF },
+  };
+
   const handleBarClick = (data: any) => {
     let clickedDateStr: string | null = null;
     if (data && data.dateStr) clickedDateStr = data.dateStr;
@@ -717,14 +731,16 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                {/* UNIFIED SYNC BUTTON */}
               <div className="relative" ref={syncDropdownRef}>
                 <div className="flex items-center rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 p-0.5">
+                  {(() => { const cfg = syncActionConfig[syncAction]; const SyncIcon = cfg.icon; return (
                   <button
-                    onClick={syncAll}
-                    disabled={syncing}
+                    onClick={() => cfg.action()}
+                    disabled={loading || syncing}
                     className="flex items-center gap-2 px-3 py-2 text-gray-700 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 rounded-l-md transition text-sm font-medium disabled:opacity-50"
                   >
-                    {syncing ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
-                    <span className="hidden md:inline">Sync</span>
+                    {(loading || syncing) ? <Loader2 size={18} className="animate-spin" /> : <SyncIcon size={18} />}
+                    <span className="hidden md:inline">{cfg.label}</span>
                   </button>
+                  ); })()}
                   <div className="w-px h-5 bg-gray-200 dark:bg-gray-600"></div>
                   <button
                     onClick={() => setSyncDropdownOpen(o => !o)}
@@ -737,7 +753,15 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                 {syncDropdownOpen && (
                   <div className="absolute right-0 mt-1 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50 py-1">
                     <button
-                      onClick={syncAll}
+                      onClick={() => { setSyncDropdownOpen(false); setSyncAction('refresh'); fetchData(); }}
+                      disabled={loading}
+                      className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+                    >
+                      <RotateCw size={16} /> Refresh Data
+                    </button>
+                    <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
+                    <button
+                      onClick={() => { setSyncDropdownOpen(false); setSyncAction('sync-all'); syncAll(); }}
                       disabled={syncing}
                       className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
                     >
@@ -746,7 +770,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                     <div className="border-t border-gray-200 dark:border-gray-700 my-1"></div>
                     <div className="flex items-center w-full hover:bg-gray-100 dark:hover:bg-gray-700">
                       <button
-                        onClick={() => { setSyncDropdownOpen(false); syncToggl(); }}
+                        onClick={() => { setSyncDropdownOpen(false); setSyncAction('toggl'); syncToggl(); }}
                         disabled={syncing}
                         className="flex items-center gap-2 flex-1 px-4 py-2 text-sm text-pink-600 dark:text-pink-400 disabled:opacity-50"
                       >
@@ -761,7 +785,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                     </div>
                     <div className="flex items-center w-full hover:bg-gray-100 dark:hover:bg-gray-700">
                       <button
-                        onClick={() => { setSyncDropdownOpen(false); syncTempo(); }}
+                        onClick={() => { setSyncDropdownOpen(false); setSyncAction('tempo'); syncTempo(); }}
                         disabled={syncing}
                         className="flex items-center gap-2 flex-1 px-4 py-2 text-sm text-blue-600 dark:text-blue-400 disabled:opacity-50"
                       >
@@ -789,19 +813,19 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                 Add Entry
               </button>
 
-              <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
-              <button onClick={fetchData} className="p-2.5 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition"><RefreshCw size={20} className={loading ? "animate-spin" : ""} /></button>
-
               {/* UNIFIED EXPORT BUTTON */}
               <div className="relative" ref={exportDropdownRef}>
                 <div className="flex items-center rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 p-0.5">
+                  {(() => { const cfg = exportActionConfig[exportAction]; const ExportIcon = cfg.icon; return (
                   <button
-                    onClick={handleExportCSV}
-                    className="flex items-center gap-2 px-3 py-2 text-gray-700 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 rounded-l-md transition text-sm font-medium"
+                    onClick={cfg.action}
+                    disabled={exportAction === 'pdf' && exportingPdf}
+                    className="flex items-center gap-2 px-3 py-2 text-gray-700 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600 rounded-l-md transition text-sm font-medium disabled:opacity-50"
                   >
-                    <Download size={18} />
-                    <span className="hidden md:inline">Export</span>
+                    {(exportAction === 'pdf' && exportingPdf) ? <Loader2 size={18} className="animate-spin" /> : <ExportIcon size={18} />}
+                    <span className="hidden md:inline">{cfg.label}</span>
                   </button>
+                  ); })()}
                   <div className="w-px h-5 bg-gray-200 dark:bg-gray-600"></div>
                   <button
                     onClick={() => setExportDropdownOpen(o => !o)}
@@ -814,13 +838,13 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                 {exportDropdownOpen && (
                   <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50 py-1">
                     <button
-                      onClick={() => { setExportDropdownOpen(false); handleExportCSV(); }}
+                      onClick={() => { setExportDropdownOpen(false); setExportAction('csv'); handleExportCSV(); }}
                       className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                     >
                       <Download size={16} /> CSV Export
                     </button>
                     <button
-                      onClick={() => { setExportDropdownOpen(false); handleExportPDF(); }}
+                      onClick={() => { setExportDropdownOpen(false); setExportAction('pdf'); handleExportPDF(); }}
                       disabled={exportingPdf}
                       className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
                     >
