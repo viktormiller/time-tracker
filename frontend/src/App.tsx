@@ -555,6 +555,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
         return (
           <AddEntry
             onBack={() => setCurrentView('dashboard')}
+            toggleSidebar={toggleSidebar}
             onSuccess={handleAddEntrySuccess}
             existingProjects={uniqueProjects}
           />
@@ -563,6 +564,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
         return (
           <SettingsPage
             onBack={() => setCurrentView('dashboard')}
+            toggleSidebar={toggleSidebar}
             onLimitsChanged={reloadHourLimits}
           />
         );
@@ -570,11 +572,12 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
         return (
           <Estimates
             onBack={() => setCurrentView('dashboard')}
+            toggleSidebar={toggleSidebar}
           />
         );
       case 'utilities':
         return (
-          <Utilities onBack={() => setCurrentView('dashboard')} />
+          <Utilities onBack={() => setCurrentView('dashboard')} toggleSidebar={toggleSidebar} />
         );
       default:
         return null; // Dashboard renders below

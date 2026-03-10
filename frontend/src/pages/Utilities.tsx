@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { ArrowLeft, Plus, MoreVertical, Edit2, Archive, Upload } from 'lucide-react';
+import { ArrowLeft, Menu, Plus, MoreVertical, Edit2, Archive, Upload } from 'lucide-react';
 import { EmptyState } from '../components/utilities/EmptyState';
 import { MeterTabs } from '../components/utilities/MeterTabs';
 import { MeterForm } from '../components/utilities/MeterForm';
@@ -14,6 +14,7 @@ import { useToast } from '../hooks/useToast';
 
 interface UtilitiesProps {
   onBack: () => void;
+  toggleSidebar?: () => void;
 }
 
 interface Meter {
@@ -40,7 +41,7 @@ export interface MeterReading {
   createdAt: string;
 }
 
-export function Utilities({ onBack }: UtilitiesProps) {
+export function Utilities({ onBack, toggleSidebar }: UtilitiesProps) {
   const { toast } = useToast();
   const [properties, setProperties] = useState<Property[]>([]);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
@@ -193,6 +194,11 @@ export function Utilities({ onBack }: UtilitiesProps) {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
+            {toggleSidebar && (
+              <button onClick={toggleSidebar} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition" title="Toggle sidebar">
+                <Menu size={20} />
+              </button>
+            )}
             <button
               onClick={onBack}
               className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition"

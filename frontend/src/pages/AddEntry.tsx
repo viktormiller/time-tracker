@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import axios from 'axios';
-import { ArrowLeft, Save, Loader2, Clock } from 'lucide-react';
+import { ArrowLeft, Menu, Save, Loader2, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { calculateDuration } from '../lib/duration';
 import { getTimezone } from '../lib/timezone';
@@ -36,11 +36,12 @@ type AddEntryFormData = z.infer<typeof addEntrySchema>;
 
 interface AddEntryProps {
   onBack: () => void;
+  toggleSidebar?: () => void;
   onSuccess: () => void;
   existingProjects: string[];
 }
 
-export function AddEntry({ onBack, onSuccess, existingProjects }: AddEntryProps) {
+export function AddEntry({ onBack, toggleSidebar, onSuccess, existingProjects }: AddEntryProps) {
   const [submitting, setSubmitting] = useState(false);
   const [showProjectSuggestions, setShowProjectSuggestions] = useState(false);
   const { toast } = useToast();
@@ -128,6 +129,11 @@ export function AddEntry({ onBack, onSuccess, existingProjects }: AddEntryProps)
       <div className="max-w-2xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
+          {toggleSidebar && (
+            <button onClick={toggleSidebar} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition" title="Toggle sidebar">
+              <Menu size={20} />
+            </button>
+          )}
           <button
             onClick={onBack}
             className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition"

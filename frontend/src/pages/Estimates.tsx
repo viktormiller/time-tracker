@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { ArrowLeft, Plus, Pencil, Trash2, Loader2, X } from 'lucide-react';
+import { ArrowLeft, Menu, Plus, Pencil, Trash2, Loader2, X } from 'lucide-react';
 import { useToast } from '../hooks/useToast';
 
 const API_URL = '/api';
@@ -32,9 +32,10 @@ interface Estimate {
 
 interface EstimatesProps {
   onBack: () => void;
+  toggleSidebar?: () => void;
 }
 
-export function Estimates({ onBack }: EstimatesProps) {
+export function Estimates({ onBack, toggleSidebar }: EstimatesProps) {
   const [estimates, setEstimates] = useState<Estimate[]>([]);
   const [availableProjects, setAvailableProjects] = useState<ProjectWithContext[]>([]);
   const [loading, setLoading] = useState(true);
@@ -181,6 +182,11 @@ export function Estimates({ onBack }: EstimatesProps) {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
+            {toggleSidebar && (
+              <button onClick={toggleSidebar} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition" title="Toggle sidebar">
+                <Menu size={20} />
+              </button>
+            )}
             <button
               onClick={onBack}
               className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition"

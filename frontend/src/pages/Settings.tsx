@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { ArrowLeft, CheckCircle, XCircle, Database, Clock, Loader2, Save } from 'lucide-react';
+import { ArrowLeft, Menu, CheckCircle, XCircle, Database, Clock, Loader2, Save } from 'lucide-react';
 import { format } from 'date-fns';
 import { getHourLimits, setHourLimits } from '../lib/hour-limits';
 
@@ -15,10 +15,11 @@ interface ProviderStatus {
 
 interface SettingsProps {
   onBack: () => void;
+  toggleSidebar?: () => void;
   onLimitsChanged?: () => void;
 }
 
-export function Settings({ onBack, onLimitsChanged }: SettingsProps) {
+export function Settings({ onBack, toggleSidebar, onLimitsChanged }: SettingsProps) {
   const [providers, setProviders] = useState<ProviderStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -77,6 +78,11 @@ export function Settings({ onBack, onLimitsChanged }: SettingsProps) {
       <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
+          {toggleSidebar && (
+            <button onClick={toggleSidebar} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition" title="Toggle sidebar">
+              <Menu size={20} />
+            </button>
+          )}
           <button
             onClick={onBack}
             className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition"
