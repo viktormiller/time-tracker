@@ -16,8 +16,9 @@ interface AuthContextType {
 // Create auth context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Global flag to prevent infinite refresh loops
+// Token refresh state: promise-based queue so parallel 401s share one refresh
 let isRefreshing = false;
+let refreshPromise: Promise<string> | null = null;
 
 // Configure axios interceptor for automatic token refresh
 axios.interceptors.response.use(
@@ -36,42 +37,56 @@ axios.interceptors.response.use(
     // 2. Already retried this request
     // 3. The failing request was the refresh endpoint itself (prevents infinite loop)
     // 4. The failing request was login or logout
-    // 5. Already in the middle of a refresh operation
     if (
       error.response?.status !== 401 ||
       originalRequest._retry ||
       isRefreshEndpoint ||
       isLoginEndpoint ||
-      isLogoutEndpoint ||
-      isRefreshing
+      isLogoutEndpoint
     ) {
       return Promise.reject(error);
     }
 
     originalRequest._retry = true;
+
+    // If a refresh is already in progress, wait for it and retry with the new token
+    if (isRefreshing && refreshPromise) {
+      const newToken = await refreshPromise;
+      originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+      return axios(originalRequest);
+    }
+
     isRefreshing = true;
+    refreshPromise = axios
+      .post(`${API_URL}/auth/refresh`)
+      .then((response) => {
+        const { accessToken } = response.data;
+
+        // Update token in memory
+        if (window.authState) {
+          window.authState.setAccessToken(accessToken);
+        }
+
+        return accessToken as string;
+      })
+      .catch((refreshError) => {
+        // Refresh failed - logout user
+        if (window.authState) {
+          window.authState.handleLogout();
+        }
+        throw refreshError;
+      })
+      .finally(() => {
+        isRefreshing = false;
+        refreshPromise = null;
+      });
 
     try {
-      // Try to refresh the token (uses HttpOnly cookie)
-      const response = await axios.post(`${API_URL}/auth/refresh`);
-      const { accessToken } = response.data;
-
-      // Update token in memory
-      if (window.authState) {
-        window.authState.setAccessToken(accessToken);
-      }
-
-      // Retry original request with new token
-      originalRequest.headers['Authorization'] = `Bearer ${accessToken}`;
+      const newToken = await refreshPromise;
+      originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
       return axios(originalRequest);
     } catch (refreshError) {
-      // Refresh failed - logout user
-      if (window.authState) {
-        window.authState.handleLogout();
-      }
       return Promise.reject(refreshError);
-    } finally {
-      isRefreshing = false;
     }
   }
 );
