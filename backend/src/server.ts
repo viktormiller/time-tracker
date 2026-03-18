@@ -167,7 +167,7 @@ app.register(async (protectedRoutes) => {
     const source = filename.includes('toggl') ? 'TOGGL' : 'TEMPO';
 
     return {
-      entries: result.entries.slice(0, 10).map(e => ({
+      entries: result.entries.map(e => ({
         date: e.date,
         duration: e.duration,
         project: e.project,

@@ -1240,8 +1240,10 @@ function ImportPreviewModal({ data, onConfirm, onCancel, importing }: {
   onCancel: () => void;
   importing: boolean;
 }) {
+  const [showAll, setShowAll] = useState(false);
   const hasErrors = data.errors.length > 0;
   const isEmpty = data.entryCount === 0;
+  const visibleEntries = showAll ? data.entries : data.entries.slice(0, 10);
 
   const formatDate = (dateStr: string) => {
     try {
@@ -1288,7 +1290,7 @@ function ImportPreviewModal({ data, onConfirm, onCancel, importing }: {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {data.entries.map((entry, i) => (
+                  {visibleEntries.map((entry, i) => (
                     <tr key={i} className="text-gray-700 dark:text-gray-300">
                       <td className="px-4 py-2 whitespace-nowrap">{formatDate(entry.date)}</td>
                       <td className="px-4 py-2">{entry.project || '–'}</td>
@@ -1298,10 +1300,13 @@ function ImportPreviewModal({ data, onConfirm, onCancel, importing }: {
                   ))}
                 </tbody>
               </table>
-              {data.entryCount > data.entries.length && (
-                <div className="text-center text-xs text-gray-400 dark:text-gray-500 py-2 border-t border-gray-100 dark:border-gray-700">
-                  ... und {data.entryCount - data.entries.length} weitere Einträge
-                </div>
+              {data.entries.length > 10 && (
+                <button
+                  onClick={() => setShowAll(!showAll)}
+                  className="w-full text-center text-xs text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 py-2 border-t border-gray-100 dark:border-gray-700 cursor-pointer transition"
+                >
+                  {showAll ? 'Weniger anzeigen' : `... und ${data.entries.length - 10} weitere Einträge`}
+                </button>
               )}
             </div>
           )}
