@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import {
   Upload, Loader2, RefreshCw, RotateCw, Filter, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown,
-  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut, Download, FileText, Plus, Gauge, Menu
+  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut, Download, FileText, Plus, Gauge, Menu, AlertTriangle
 } from 'lucide-react';
 import {
   format, parseISO, isSameDay, startOfToday, endOfToday,
@@ -150,6 +150,13 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'date', direction: 'desc' });
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
+  const [previewData, setPreviewData] = useState<{
+    entries: { date: string; duration: number; project: string | null; description: string | null }[];
+    entryCount: number;
+    errors: string[];
+    source: string;
+  } | null>(null);
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [showSyncModal, setShowSyncModal] = useState<'TOGGL' | 'TEMPO' | null>(null);
   const [showDailyLimit, setShowDailyLimit] = useState(true);
   const [syncDropdownOpen, setSyncDropdownOpen] = useState(false);
@@ -571,8 +578,39 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
-    try { await axios.post(`${API_URL}/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }); toast.success('Import erfolgreich!'); fetchData(); }
-    catch (error) { toast.error('Fehler beim Upload.'); } finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
+    try {
+      const response = await axios.post(`${API_URL}/upload/preview`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setPreviewData(response.data);
+      setPreviewFile(file);
+    } catch (error) {
+      toast.error('Fehler beim Lesen der CSV-Datei.');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleConfirmImport = async () => {
+    if (!previewFile) return;
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('file', previewFile);
+    try {
+      const response = await axios.post(`${API_URL}/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      toast.success(`${response.data.imported} Einträge importiert!`);
+      fetchData();
+    } catch (error) {
+      toast.error('Fehler beim Import.');
+    } finally {
+      setUploading(false);
+      setPreviewData(null);
+      setPreviewFile(null);
+    }
+  };
+
+  const handleCancelImport = () => {
+    setPreviewData(null);
+    setPreviewFile(null);
   };
 
   // Helper to render the current view content
@@ -694,6 +732,15 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
             onClose={() => setShowSyncModal(null)}
             onSync={(start, end) => showSyncModal === 'TOGGL' ? syncToggl(start, end) : syncTempo(start, end)}
             syncing={syncing}
+        />
+      )}
+
+      {previewData && (
+        <ImportPreviewModal
+          data={previewData}
+          onConfirm={handleConfirmImport}
+          onCancel={handleCancelImport}
+          importing={uploading}
         />
       )}
 
@@ -1185,6 +1232,97 @@ function TogglDateRangePicker({
             )}
         </div>
     );
+}
+
+function ImportPreviewModal({ data, onConfirm, onCancel, importing }: {
+  data: { entries: { date: string; duration: number; project: string | null; description: string | null }[]; entryCount: number; errors: string[]; source: string };
+  onConfirm: () => void;
+  onCancel: () => void;
+  importing: boolean;
+}) {
+  const hasErrors = data.errors.length > 0;
+  const isEmpty = data.entryCount === 0;
+
+  const formatDate = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    } catch { return dateStr; }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+        <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900">
+          <h3 className="font-bold text-gray-800 dark:text-gray-100 text-lg">CSV Import Vorschau</h3>
+          <button onClick={onCancel} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"><X size={20} /></button>
+        </div>
+
+        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+          {/* Error/warning banner */}
+          {(hasErrors || isEmpty) && (
+            <div className="flex items-start gap-3 p-4 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800">
+              <AlertTriangle size={20} className="text-red-500 dark:text-red-400 shrink-0 mt-0.5" />
+              <div className="text-sm text-red-700 dark:text-red-300 space-y-1">
+                {data.errors.map((err, i) => <p key={i}>{err}</p>)}
+                {isEmpty && data.errors.length === 0 && <p>Keine importierbaren Einträge gefunden.</p>}
+              </div>
+            </div>
+          )}
+
+          {/* Summary */}
+          <div className="text-sm text-gray-600 dark:text-gray-400">
+            Quelle: <span className="font-medium text-gray-800 dark:text-gray-200">{data.source}</span> &middot; <span className="font-medium text-gray-800 dark:text-gray-200">{data.entryCount}</span> Einträge gefunden
+          </div>
+
+          {/* Sample table */}
+          {data.entries.length > 0 && (
+            <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400">
+                  <tr>
+                    <th className="text-left px-4 py-2 font-medium">Datum</th>
+                    <th className="text-left px-4 py-2 font-medium">Projekt</th>
+                    <th className="text-left px-4 py-2 font-medium">Beschreibung</th>
+                    <th className="text-right px-4 py-2 font-medium">Dauer</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {data.entries.map((entry, i) => (
+                    <tr key={i} className="text-gray-700 dark:text-gray-300">
+                      <td className="px-4 py-2 whitespace-nowrap">{formatDate(entry.date)}</td>
+                      <td className="px-4 py-2">{entry.project || '–'}</td>
+                      <td className="px-4 py-2 truncate max-w-[200px]">{entry.description || '–'}</td>
+                      <td className="px-4 py-2 text-right whitespace-nowrap">{entry.duration.toFixed(2)}h</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {data.entryCount > data.entries.length && (
+                <div className="text-center text-xs text-gray-400 dark:text-gray-500 py-2 border-t border-gray-100 dark:border-gray-700">
+                  ... und {data.entryCount - data.entries.length} weitere Einträge
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="p-5 border-t border-gray-100 dark:border-gray-700 flex justify-end gap-3 bg-gray-50 dark:bg-gray-900">
+          <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition">
+            Abbrechen
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={isEmpty || importing}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {importing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+            Importieren
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function SyncModal({ service, onClose, onSync, syncing }: { service: string, onClose: () => void, onSync: (start?: string, end?: string) => void, syncing: boolean }) {

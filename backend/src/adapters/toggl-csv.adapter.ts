@@ -60,6 +60,20 @@ async parse(fileContent: string): Promise<ImportResult> {
           endTime: null,
         });
       }
+
+      // Warn if CSV had rows but no entries were parsed (likely wrong report type)
+      if (records.length > 0 && result.entries.length === 0) {
+        const hasStartDate = records[0] && 'Start date' in records[0];
+        if (!hasStartDate) {
+          result.errors.push(
+            `Keine Einträge gefunden (${records.length} Zeilen). Möglicherweise ist dies ein Toggl-Zusammenfassungsbericht. Bitte einen detaillierten Bericht verwenden (mit Spalten: Start date, Start time, Duration, Project, Description).`
+          );
+        } else {
+          result.errors.push(
+            `Keine gültigen Einträge gefunden (${records.length} Zeilen). Bitte das CSV-Format prüfen.`
+          );
+        }
+      }
     } catch (error) {
       result.errors.push(`Failed to parse Toggl CSV: ${(error as Error).message}`);
     }

@@ -6,6 +6,7 @@ import cors from '@fastify/cors';
 import { PrismaClient } from '@prisma/client';
 import { TogglCsvAdapter } from './adapters/toggl-csv.adapter';
 import { TempoCsvAdapter } from './adapters/tempo-csv.adapter';
+import { ImportAdapter } from './adapters/import-adapter.interface';
 import authPlugin from './plugins/auth';
 import sessionPlugin from './plugins/session';
 import securityPlugin from './plugins/security';
@@ -136,7 +137,49 @@ app.register(async (protectedRoutes) => {
     return entries;
   });
 
-  // 2. Upload Endpoint
+  // Helper: detect CSV adapter from filename/content
+  function detectAdapter(filename: string, fileContent: string): ImportAdapter {
+    if (filename.includes('toggl')) return new TogglCsvAdapter();
+    if (filename.includes('report') && fileContent.includes('01/Dec')) return new TempoCsvAdapter();
+    if (fileContent.includes('Issue,Key')) return new TempoCsvAdapter();
+    throw new Error('Unknown CSV format. Please rename file to include "toggl" or ensure Tempo format.');
+  }
+
+  // 2a. Upload Preview Endpoint
+  protectedRoutes.post('/upload/preview', async (req, reply) => {
+    const data = await req.file();
+    if (!data) {
+      return reply.code(400).send({ error: 'No file uploaded' });
+    }
+
+    const buffer = await data.toBuffer();
+    const fileContent = buffer.toString('utf-8');
+    const filename = data.filename.toLowerCase();
+
+    let adapter: ImportAdapter;
+    try {
+      adapter = detectAdapter(filename, fileContent);
+    } catch (e) {
+      return reply.code(400).send({ error: (e as Error).message });
+    }
+
+    const result = await adapter.parse(fileContent);
+    const source = filename.includes('toggl') ? 'TOGGL' : 'TEMPO';
+
+    return {
+      entries: result.entries.slice(0, 10).map(e => ({
+        date: e.date,
+        duration: e.duration,
+        project: e.project,
+        description: e.description,
+      })),
+      entryCount: result.entries.length,
+      errors: result.errors,
+      source,
+    };
+  });
+
+  // 2b. Upload Endpoint
   protectedRoutes.post('/upload', async (req, reply) => {
     const data = await req.file();
     if (!data) {
@@ -147,23 +190,11 @@ app.register(async (protectedRoutes) => {
     const fileContent = buffer.toString('utf-8');
     const filename = data.filename.toLowerCase();
 
-    let adapter;
-
-    // Simple strategy selection based on filename or content detection
-    if (filename.includes('toggl')) {
-      adapter = new TogglCsvAdapter();
-    } else if (filename.includes('report') && fileContent.includes('01/Dec')) {
-      // Basic heuristic for Tempo based on your file naming/content
-      adapter = new TempoCsvAdapter();
-    } else {
-      // Fallback detection logic could go here
-      // For now, default to Tempo if it looks like a matrix?
-      // Let's assume explicit naming for safety first.
-      if(fileContent.includes('Issue,Key')) {
-          adapter = new TempoCsvAdapter();
-      } else {
-          return reply.code(400).send({ error: 'Unknown CSV format. Please rename file to include "toggl" or ensure Tempo format.' });
-      }
+    let adapter: ImportAdapter;
+    try {
+      adapter = detectAdapter(filename, fileContent);
+    } catch (e) {
+      return reply.code(400).send({ error: (e as Error).message });
     }
 
     const result = await adapter.parse(fileContent);
