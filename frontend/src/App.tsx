@@ -527,11 +527,11 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const dailyComparisonData = useMemo(() => {
     const tz = getTimezone();
     const nowInTz = toZonedTime(new Date(), tz);
-    const oneMonthAgo = subMonths(nowInTz, 1);
+    const fourWeeksAgo = subWeeks(nowInTz, 4);
     const hours = entries
-      .filter(e => isSameDay(toZonedTime(parseISO(e.date), tz), oneMonthAgo))
+      .filter(e => isSameDay(toZonedTime(parseISO(e.date), tz), fourWeeksAgo))
       .reduce((acc, curr) => acc + curr.duration, 0);
-    return { hours, date: oneMonthAgo };
+    return { hours, date: fourWeeksAgo };
   }, [entries]);
 
   const dailyComparison = useMemo(() => {
@@ -541,16 +541,16 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
 
   const dailyComparisonTooltip = useMemo(() => {
     if (dailyComparisonData.hours === 0) return undefined;
-    return `${format(dailyComparisonData.date, 'd. MMM yyyy', { locale: de })}: ${dailyComparisonData.hours.toFixed(2)}h`;
+    return `${format(dailyComparisonData.date, 'EEE d. MMM yyyy', { locale: de })}: ${dailyComparisonData.hours.toFixed(2)}h`;
   }, [dailyComparisonData]);
 
-  // Weekly comparison: compare this week's hours (Mon-today) vs same partial week one month ago
+  // Weekly comparison: compare this week's hours (Mon-today) vs same partial week four weeks ago (weekday-aligned)
   const weeklyComparisonData = useMemo(() => {
     const tz = getTimezone();
     const nowInTz = toZonedTime(new Date(), tz);
-    const oneMonthAgo = subMonths(nowInTz, 1);
+    const fourWeeksAgo = subWeeks(nowInTz, 4);
     const todayDow = (getDay(nowInTz) + 6) % 7; // 0=Mon, 6=Sun
-    const compWeekStart = startOfWeek(oneMonthAgo, { weekStartsOn: 1 });
+    const compWeekStart = startOfWeek(fourWeeksAgo, { weekStartsOn: 1 });
     const compWeekEnd = endOfDay(addDays(compWeekStart, todayDow));
     const hours = entries
       .filter(e => {
