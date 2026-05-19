@@ -2,9 +2,10 @@ import { ImportAdapter, ImportResult } from './import-adapter.interface';
 import { parse } from 'csv-parse/sync';
 import { parse as parseDate } from 'date-fns';
 import { enUS } from 'date-fns/locale'; // Import English locale for "Dec", "Jan"
+import { fromZonedTime } from 'date-fns-tz';
 
 export class TempoCsvAdapter implements ImportAdapter {
-  async parse(fileContent: string): Promise<ImportResult> {
+  async parse(fileContent: string, timezone?: string): Promise<ImportResult> {
     const result: ImportResult = { entries: [], errors: [] };
 
     try {
@@ -69,10 +70,13 @@ export class TempoCsvAdapter implements ImportAdapter {
                     // Für die Matrix-Ansicht ist das aber okay.
                     const syntheticId = `CSV_TEMPO_${dateObj.getTime()}_${key}_${hours}`;
 
+                    const tz = timezone || 'UTC';
+                    const localDateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}T00:00:00`;
+
                     result.entries.push({
                         source: 'TEMPO',
                         externalId: syntheticId,
-                        date: dateObj,
+                        date: fromZonedTime(localDateStr, tz),
                         duration: hours,
                         project: key,
                         description: issue,

@@ -146,12 +146,13 @@ app.register(async (protectedRoutes) => {
   }
 
   // 2a. Upload Preview Endpoint
-  protectedRoutes.post('/upload/preview', async (req, reply) => {
+  protectedRoutes.post<{ Querystring: { timezone?: string } }>('/upload/preview', async (req, reply) => {
     const data = await req.file();
     if (!data) {
       return reply.code(400).send({ error: 'No file uploaded' });
     }
 
+    const timezone = req.query.timezone;
     const buffer = await data.toBuffer();
     const fileContent = buffer.toString('utf-8');
     const filename = data.filename.toLowerCase();
@@ -163,7 +164,7 @@ app.register(async (protectedRoutes) => {
       return reply.code(400).send({ error: (e as Error).message });
     }
 
-    const result = await adapter.parse(fileContent);
+    const result = await adapter.parse(fileContent, timezone);
     const source = filename.includes('toggl') ? 'TOGGL' : 'TEMPO';
 
     return {
@@ -172,6 +173,8 @@ app.register(async (protectedRoutes) => {
         duration: e.duration,
         project: e.project,
         description: e.description,
+        startTime: e.startTime,
+        endTime: e.endTime,
       })),
       entryCount: result.entries.length,
       errors: result.errors,
@@ -180,12 +183,13 @@ app.register(async (protectedRoutes) => {
   });
 
   // 2b. Upload Endpoint
-  protectedRoutes.post('/upload', async (req, reply) => {
+  protectedRoutes.post<{ Querystring: { timezone?: string } }>('/upload', async (req, reply) => {
     const data = await req.file();
     if (!data) {
       return reply.code(400).send({ error: 'No file uploaded' });
     }
 
+    const timezone = req.query.timezone;
     const buffer = await data.toBuffer();
     const fileContent = buffer.toString('utf-8');
     const filename = data.filename.toLowerCase();
@@ -197,7 +201,7 @@ app.register(async (protectedRoutes) => {
       return reply.code(400).send({ error: (e as Error).message });
     }
 
-    const result = await adapter.parse(fileContent);
+    const result = await adapter.parse(fileContent, timezone);
 
     if (result.errors.length > 0) {
       req.log.error(result.errors);
@@ -290,6 +294,22 @@ app.register(async (protectedRoutes) => {
     } catch (error) {
       req.log.error(error);
       return reply.code(500).send({ error: 'Could not delete entry' });
+    }
+  });
+
+  // Mehrere Einträge löschen (Bulk Delete)
+  protectedRoutes.post('/entries/bulk-delete', async (req, reply) => {
+    const { ids } = req.body as { ids: string[] };
+    if (!ids?.length) return reply.code(400).send({ error: 'No IDs provided' });
+
+    try {
+      const result = await prisma.timeEntry.deleteMany({
+        where: { id: { in: ids } },
+      });
+      return { success: true, deleted: result.count };
+    } catch (error) {
+      req.log.error(error);
+      return reply.code(500).send({ error: 'Could not delete entries' });
     }
   });
 

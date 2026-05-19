@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import {
   Upload, Loader2, RefreshCw, RotateCw, Filter, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown,
-  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut, Download, FileText, Plus, Gauge, Menu, AlertTriangle
+  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut, Download, FileText, Plus, Gauge, Menu, AlertTriangle, CheckSquare
 } from 'lucide-react';
 import {
   format, parseISO, isSameDay, startOfToday, endOfToday,
@@ -150,8 +150,9 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'date', direction: 'desc' });
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null);
+  const [selectedEntries, setSelectedEntries] = useState<Set<string>>(new Set());
   const [previewData, setPreviewData] = useState<{
-    entries: { date: string; duration: number; project: string | null; description: string | null }[];
+    entries: { date: string; duration: number; project: string | null; description: string | null; startTime: string | null; endTime: string | null }[];
     entryCount: number;
     errors: string[];
     source: string;
@@ -186,14 +187,43 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
     setLoading(true);
     try {
       const res = await axios.get<TimeEntry[]>(`${API_URL}/stats`);
-      if (Array.isArray(res.data)) setEntries(res.data);
-    } catch (error) { console.error("Fehler beim Laden:", error); } 
+      if (Array.isArray(res.data)) { setEntries(res.data); setSelectedEntries(new Set()); }
+    } catch (error) { console.error("Fehler beim Laden:", error); }
     finally { setLoading(false); }
   };
 
   const deleteEntry = async (id: string) => {
     if (!confirm('Möchtest du diesen Eintrag wirklich löschen?')) return;
-    try { await axios.delete(`${API_URL}/entries/${id}`); fetchData(); } catch (e) { toast.error('Fehler beim Löschen'); }
+    try { await axios.delete(`${API_URL}/entries/${id}`); setSelectedEntries(prev => { const next = new Set(prev); next.delete(id); return next; }); fetchData(); } catch (e) { toast.error('Fehler beim Löschen'); }
+  };
+
+  const toggleEntrySelection = (id: string) => {
+    setSelectedEntries(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedEntries.size === tableEntries.length) {
+      setSelectedEntries(new Set());
+    } else {
+      setSelectedEntries(new Set(tableEntries.map(e => e.id)));
+    }
+  };
+
+  const deleteSelectedEntries = async () => {
+    if (selectedEntries.size === 0) return;
+    if (!confirm(`Möchtest du ${selectedEntries.size} Einträge wirklich löschen?`)) return;
+    try {
+      await axios.post(`${API_URL}/entries/bulk-delete`, { ids: Array.from(selectedEntries) });
+      toast.success(`${selectedEntries.size} Einträge gelöscht.`);
+      setSelectedEntries(new Set());
+      fetchData();
+    } catch (e) {
+      toast.error('Fehler beim Löschen');
+    }
   };
 
   const updateEntry = async (entry: TimeEntry) => {
@@ -579,7 +609,8 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const response = await axios.post(`${API_URL}/upload/preview`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const tz = getTimezone();
+      const response = await axios.post(`${API_URL}/upload/preview?timezone=${encodeURIComponent(tz)}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
       setPreviewData(response.data);
       setPreviewFile(file);
     } catch (error) {
@@ -596,7 +627,8 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
     const formData = new FormData();
     formData.append('file', previewFile);
     try {
-      const response = await axios.post(`${API_URL}/upload`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+      const tz = getTimezone();
+      const response = await axios.post(`${API_URL}/upload?timezone=${encodeURIComponent(tz)}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
       toast.success(`${response.data.imported} Einträge importiert!`);
       fetchData();
     } catch (error) {
@@ -1075,12 +1107,26 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
               <table className="w-full text-left text-sm whitespace-nowrap">
                   <thead className="bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400 sticky top-0 z-10 shadow-sm">
                       <tr>
+                          <th className="px-3 py-3 w-[40px]">
+                            <input
+                              type="checkbox"
+                              checked={tableEntries.length > 0 && selectedEntries.size === tableEntries.length}
+                              onChange={toggleSelectAll}
+                              className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+                            />
+                          </th>
                           <SortableHeader label="Datum" sortKey="date" currentSort={sortConfig} onSort={handleSort} />
                           <SortableHeader label="Quelle" sortKey="source" currentSort={sortConfig} onSort={handleSort} />
                           <SortableHeader label="Projekt" sortKey="project" currentSort={sortConfig} onSort={handleSort} />
                           <SortableHeader label="Beschreibung" sortKey="description" currentSort={sortConfig} onSort={handleSort} />
                           <SortableHeader label="Dauer" sortKey="duration" currentSort={sortConfig} onSort={handleSort} align="right" />
-                          <th className="px-6 py-3 font-medium text-right w-[100px]">Aktionen</th>
+                          <th className="px-6 py-3 font-medium text-right w-[100px]">
+                            {selectedEntries.size > 0 ? (
+                              <button onClick={deleteSelectedEntries} className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/50 hover:bg-red-100 dark:hover:bg-red-900 rounded transition">
+                                <Trash2 size={14} /> {selectedEntries.size} löschen
+                              </button>
+                            ) : 'Aktionen'}
+                          </th>
                       </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -1088,10 +1134,20 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                         const timezone = getTimezone();
                         const utcDate = parseISO(entry.date);
                         const zonedDate = toZonedTime(utcDate, timezone);
-                        const formattedDate = format(zonedDate, 'EE dd.MM.yyyy HH:mm', { locale: de });
+                        const formattedDate = entry.startTime
+                          ? format(zonedDate, 'EE dd.MM.yyyy', { locale: de }) + ' ' + entry.startTime
+                          : format(zonedDate, 'EE dd.MM.yyyy', { locale: de });
 
                         return (
-                          <tr key={entry.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors group">
+                          <tr key={entry.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors group ${selectedEntries.has(entry.id) ? 'bg-indigo-50/50 dark:bg-indigo-900/20' : ''}`}>
+                              <td className="px-3 py-3">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedEntries.has(entry.id)}
+                                  onChange={() => toggleEntrySelection(entry.id)}
+                                  className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+                                />
+                              </td>
                               <td className="px-6 py-3 text-gray-600 dark:text-gray-300">{formattedDate}</td>
                               <td className="px-6 py-3">
                                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -1125,7 +1181,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                   </tbody>
                   {tableEntries.length > 0 && (
                       <tfoot className="bg-gray-50 dark:bg-gray-700 sticky bottom-0 z-10 shadow-inner">
-                          <tr><td colSpan={4} className="px-6 py-4 text-right font-bold text-gray-700 dark:text-gray-300">Gesamt:</td><td className="px-6 py-4 text-right font-bold text-indigo-600 dark:text-indigo-400 text-base">{tableTotalHours.toFixed(2)} h</td><td></td></tr>
+                          <tr><td colSpan={5} className="px-6 py-4 text-right font-bold text-gray-700 dark:text-gray-300">Gesamt:</td><td className="px-6 py-4 text-right font-bold text-indigo-600 dark:text-indigo-400 text-base">{tableTotalHours.toFixed(2)} h</td><td></td></tr>
                       </tfoot>
                   )}
               </table>
@@ -1235,7 +1291,7 @@ function TogglDateRangePicker({
 }
 
 function ImportPreviewModal({ data, onConfirm, onCancel, importing }: {
-  data: { entries: { date: string; duration: number; project: string | null; description: string | null }[]; entryCount: number; errors: string[]; source: string };
+  data: { entries: { date: string; duration: number; project: string | null; description: string | null; startTime: string | null; endTime: string | null }[]; entryCount: number; errors: string[]; source: string };
   onConfirm: () => void;
   onCancel: () => void;
   importing: boolean;
@@ -1245,10 +1301,13 @@ function ImportPreviewModal({ data, onConfirm, onCancel, importing }: {
   const isEmpty = data.entryCount === 0;
   const visibleEntries = showAll ? data.entries : data.entries.slice(0, 10);
 
-  const formatDate = (dateStr: string) => {
+  const tz = getTimezone();
+  const formatDateTime = (dateStr: string, startTime: string | null) => {
     try {
-      const d = new Date(dateStr);
-      return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const d = toZonedTime(new Date(dateStr), tz);
+      const datePart = format(d, 'dd.MM.yyyy', { locale: de });
+      if (startTime) return `${datePart} ${startTime}`;
+      return datePart;
     } catch { return dateStr; }
   };
 
@@ -1292,7 +1351,7 @@ function ImportPreviewModal({ data, onConfirm, onCancel, importing }: {
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                   {visibleEntries.map((entry, i) => (
                     <tr key={i} className="text-gray-700 dark:text-gray-300">
-                      <td className="px-4 py-2 whitespace-nowrap">{formatDate(entry.date)}</td>
+                      <td className="px-4 py-2 whitespace-nowrap">{formatDateTime(entry.date, entry.startTime)}</td>
                       <td className="px-4 py-2">{entry.project || '–'}</td>
                       <td className="px-4 py-2 truncate max-w-[200px]">{entry.description || '–'}</td>
                       <td className="px-4 py-2 text-right whitespace-nowrap">{entry.duration.toFixed(2)}h</td>
@@ -1379,8 +1438,8 @@ function EditModal({ entry, onClose, onSave }: { entry: TimeEntry, onClose: () =
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
 
-        // If editing a manual entry, send timezone to backend
-        if (isManual && formData.startTime) {
+        // Send timezone to backend for entries with start/end times
+        if ((isManual || entry.startTime) && formData.startTime) {
             onSave({
                 ...entry,
                 ...formData,
@@ -1398,11 +1457,16 @@ function EditModal({ entry, onClose, onSave }: { entry: TimeEntry, onClose: () =
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
                     <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Datum</label><input type="date" required value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 shadow-sm p-2.5 border" /></div>
 
-                    {isManual ? (
-                        <div className="grid grid-cols-2 gap-4">
-                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Startzeit</label><input type="time" required value={formData.startTime} onChange={e => setFormData({...formData, startTime: e.target.value})} className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 shadow-sm p-2.5 border" /></div>
-                            <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Endzeit</label><input type="time" required value={formData.endTime} onChange={e => setFormData({...formData, endTime: e.target.value})} className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 shadow-sm p-2.5 border" /></div>
-                        </div>
+                    {(isManual || entry.startTime) ? (
+                        <>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Startzeit</label><input type="time" required value={formData.startTime} onChange={e => setFormData({...formData, startTime: e.target.value})} className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 shadow-sm p-2.5 border" /></div>
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Endzeit</label><input type="time" required value={formData.endTime} onChange={e => setFormData({...formData, endTime: e.target.value})} className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 shadow-sm p-2.5 border" /></div>
+                            </div>
+                            {!isManual && (
+                                <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Dauer (Stunden)</label><input type="number" step="0.01" min="0.01" required value={formData.duration} onChange={e => setFormData({...formData, duration: parseFloat(e.target.value)})} className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 shadow-sm p-2.5 border" /></div>
+                            )}
+                        </>
                     ) : (
                         <div><label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Dauer (Stunden)</label><input type="number" step="0.01" min="0.01" required value={formData.duration} onChange={e => setFormData({...formData, duration: parseFloat(e.target.value)})} className="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 shadow-sm p-2.5 border" /></div>
                     )}

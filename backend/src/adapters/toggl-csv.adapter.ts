@@ -1,8 +1,9 @@
 import { ImportAdapter, ImportResult } from './import-adapter.interface';
 import { parse } from 'csv-parse/sync';
+import { fromZonedTime } from 'date-fns-tz';
 
 export class TogglCsvAdapter implements ImportAdapter {
-async parse(fileContent: string): Promise<ImportResult> {
+async parse(fileContent: string, timezone?: string): Promise<ImportResult> {
     const result: ImportResult = { entries: [], errors: [] };
 
     try {
@@ -35,7 +36,11 @@ async parse(fileContent: string): Promise<ImportResult> {
 
         if (!dateStr) continue;
 
-        const fullDate = new Date(`${dateStr}T${timeStr || '00:00:00'}`);
+        // Convert local date+time to UTC using the provided timezone
+        const tz = timezone || 'UTC';
+        const entryDate = fromZonedTime(`${dateStr}T${timeStr || '00:00:00'}`, tz);
+        // Full datetime for synthetic ID uniqueness
+        const fullDateTime = entryDate;
 
         const durationRaw = row['Duration'];
         const duration = this.parseDuration(durationRaw);
@@ -44,20 +49,23 @@ async parse(fileContent: string): Promise<ImportResult> {
         const project = row['Project'] || 'No Project';
         const description = row['Description'] || '';
 
-        // NEU: Synthetische ID generieren
-        // Wir nehmen Datum + Zeit + Projekt als Eindeutigkeitsmerkmal für CSVs
-        // .getTime() liefert den Timestamp als Zahl
-        const syntheticId = `CSV_TOGGL_${fullDate.getTime()}_${project.replace(/\s/g, '')}`;
+        // Synthetische ID: Datum + Zeit + Projekt als Eindeutigkeitsmerkmal
+        const syntheticId = `CSV_TOGGL_${fullDateTime.getTime()}_${project.replace(/\s/g, '')}`;
+
+        // Extract start/stop times as HH:mm
+        const startTime = timeStr ? timeStr.substring(0, 5) : null;
+        const stopTimeStr = row['Stop time'];
+        const endTime = stopTimeStr ? stopTimeStr.substring(0, 5) : null;
 
         result.entries.push({
           source: 'TOGGL',
           externalId: syntheticId,
-          date: fullDate,
+          date: entryDate,
           duration: duration,
           project: project,
           description: description,
-          startTime: null,
-          endTime: null,
+          startTime,
+          endTime,
         });
       }
 

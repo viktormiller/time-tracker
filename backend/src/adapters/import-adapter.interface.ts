@@ -6,5 +6,5 @@ export interface ImportResult {
 }
 
 export interface ImportAdapter {
-  parse(fileContent: string): Promise<ImportResult>;
+  parse(fileContent: string, timezone?: string): Promise<ImportResult>;
 }
