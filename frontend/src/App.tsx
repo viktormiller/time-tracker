@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import {
   Upload, Loader2, RefreshCw, RotateCw, Filter, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown,
-  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut, Download, FileText, Plus, Gauge, Menu, AlertTriangle, CheckSquare
+  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut, Download, FileText, Plus, Gauge, Menu, AlertTriangle, CheckSquare, Timer
 } from 'lucide-react';
 import {
   format, parseISO, isSameDay, startOfToday, endOfToday,
@@ -60,6 +60,7 @@ interface DailyStats {
   togglHours: number;
   tempoHours: number;
   manualHours: number;
+  clockifyHours: number;
   projects: string[];
   isWeekend: boolean;
 }
@@ -141,7 +142,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const [uploading, setUploading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
-  const [syncAction, setSyncAction] = useState<'sync-all' | 'refresh' | 'toggl' | 'tempo'>('sync-all');
+  const [syncAction, setSyncAction] = useState<'sync-all' | 'refresh' | 'toggl' | 'tempo' | 'clockify'>('sync-all');
   const [exportAction, setExportAction] = useState<'csv' | 'pdf'>('csv');
   
   // Filter & UI States
@@ -158,7 +159,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
     source: string;
   } | null>(null);
   const [previewFile, setPreviewFile] = useState<File | null>(null);
-  const [showSyncModal, setShowSyncModal] = useState<'TOGGL' | 'TEMPO' | null>(null);
+  const [showSyncModal, setShowSyncModal] = useState<'TOGGL' | 'TEMPO' | 'CLOCKIFY' | null>(null);
   const [showDailyLimit, setShowDailyLimit] = useState(true);
   const [syncDropdownOpen, setSyncDropdownOpen] = useState(false);
   const syncDropdownRef = useRef<HTMLDivElement>(null);
@@ -244,6 +245,13 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
       toast.success(`Tempo Sync erfolgreich: ${res.data.message} (${res.data.count} Einträge)`);
   };
 
+  const _syncClockify = async (startDate?: string, endDate?: string) => {
+      const isCustom = !!startDate && startDate !== '';
+      const payload = isCustom ? { startDate, endDate } : {};
+      const res = await axios.post(`${API_URL}/sync/clockify?force=true`, payload);
+      toast.success(`Clockify Sync erfolgreich: ${res.data.message} (${res.data.count} Einträge)`);
+  };
+
   const syncToggl = async (startDate?: string, endDate?: string) => {
       setSyncing(true); setShowSyncModal(null);
       try {
@@ -266,13 +274,25 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
       } finally { setSyncing(false); }
   };
 
+  const syncClockify = async (startDate?: string, endDate?: string) => {
+      setSyncing(true); setShowSyncModal(null);
+      try {
+          await _syncClockify(startDate, endDate);
+          fetchData();
+      } catch (error) {
+          if (axios.isAxiosError(error) && error.response?.data?.error) toast.error(`Fehler beim Clockify Sync: ${error.response.data.error}`);
+          else toast.error('Unbekannter Fehler beim Clockify Sync.');
+      } finally { setSyncing(false); }
+  };
+
   const syncAll = async () => {
       setSyncing(true); setSyncDropdownOpen(false);
       try {
-          const results = await Promise.allSettled([_syncToggl(), _syncTempo()]);
+          const labels = ['Toggl', 'Tempo', 'Clockify'];
+          const results = await Promise.allSettled([_syncToggl(), _syncTempo(), _syncClockify()]);
           results.forEach((r, i) => {
               if (r.status === 'rejected') {
-                  const label = i === 0 ? 'Toggl' : 'Tempo';
+                  const label = labels[i];
                   const err = r.reason;
                   if (axios.isAxiosError(err) && err.response?.data?.error) toast.error(`${label} Sync: ${err.response.data.error}`);
                   else toast.error(`${label} Sync fehlgeschlagen.`);
@@ -378,6 +398,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                     togglHours: 0,
                     tempoHours: 0,
                     manualHours: 0,
+                    clockifyHours: 0,
                     projects: [],
                     isWeekend: isWeekend(day)
                 });
@@ -398,7 +419,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
           map.set(dateKey, {
               dateStr: dateKey,
               displayDate: format(dateObj, 'EE dd.MM', { locale: de }),
-              totalHours: 0, togglHours: 0, tempoHours: 0, manualHours: 0, projects: [],
+              totalHours: 0, togglHours: 0, tempoHours: 0, manualHours: 0, clockifyHours: 0, projects: [],
               isWeekend: isWeekend(dateObj)
           });
       }
@@ -411,6 +432,8 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
         dayStat.tempoHours += entry.duration;
       } else if (entry.source === 'MANUAL') {
         dayStat.manualHours += entry.duration;
+      } else if (entry.source === 'CLOCKIFY') {
+        dayStat.clockifyHours += entry.duration;
       }
       if (entry.project && !dayStat.projects.includes(entry.project)) dayStat.projects.push(entry.project);
     });
@@ -515,10 +538,11 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   };
   
   const syncActionConfig = {
-    'sync-all': { label: 'Sync',    icon: RefreshCw,      action: syncAll },
-    'refresh':  { label: 'Refresh', icon: RotateCw,       action: fetchData },
-    'toggl':    { label: 'Toggl',   icon: CloudLightning, action: syncToggl },
-    'tempo':    { label: 'Tempo',   icon: Layers,         action: syncTempo },
+    'sync-all': { label: 'Sync',     icon: RefreshCw,      action: syncAll },
+    'refresh':  { label: 'Refresh',  icon: RotateCw,       action: fetchData },
+    'toggl':    { label: 'Toggl',    icon: CloudLightning, action: syncToggl },
+    'tempo':    { label: 'Tempo',    icon: Layers,         action: syncTempo },
+    'clockify': { label: 'Clockify', icon: Timer,          action: syncClockify },
   };
 
   const exportActionConfig = {
@@ -762,7 +786,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
         <SyncModal
             service={showSyncModal}
             onClose={() => setShowSyncModal(null)}
-            onSync={(start, end) => showSyncModal === 'TOGGL' ? syncToggl(start, end) : syncTempo(start, end)}
+            onSync={(start, end) => showSyncModal === 'TOGGL' ? syncToggl(start, end) : showSyncModal === 'CLOCKIFY' ? syncClockify(start, end) : syncTempo(start, end)}
             syncing={syncing}
         />
       )}
@@ -877,6 +901,21 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                         <Settings size={14} />
                       </button>
                     </div>
+                    <div className="flex items-center w-full hover:bg-gray-100 dark:hover:bg-gray-700">
+                      <button
+                        onClick={() => { setSyncDropdownOpen(false); setSyncAction('clockify'); syncClockify(); }}
+                        disabled={syncing}
+                        className="flex items-center gap-2 flex-1 px-4 py-2 text-sm text-emerald-600 dark:text-emerald-400 disabled:opacity-50"
+                      >
+                        <Timer size={16} /> Clockify
+                      </button>
+                      <button
+                        onClick={() => { setSyncDropdownOpen(false); setShowSyncModal('CLOCKIFY'); }}
+                        className="px-3 py-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                      >
+                        <Settings size={14} />
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -962,6 +1001,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                     { value: 'ALL', label: 'Alle Quellen' },
                     { value: 'TOGGL', label: 'Toggl' },
                     { value: 'TEMPO', label: 'Tempo' },
+                    { value: 'CLOCKIFY', label: 'Clockify' },
                     { value: 'MANUAL', label: 'Manual' },
                 ]}
                 icon={<Filter size={16} className="text-gray-400 dark:text-gray-500" />}
@@ -1077,6 +1117,11 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                             <Cell key={`cell-tempo-${index}`} fill="#3B82F6" fillOpacity={selectedDay && entry.dateStr !== selectedDay ? 0.3 : 1} />
                         ))}
                     </Bar>
+                    <Bar name="Clockify" dataKey="clockifyHours" stackId="a" fill="#10B981" radius={[0, 0, 0, 0]} cursor="pointer" onClick={handleBarClick}>
+                        {aggregatedData.map((entry, index) => (
+                            <Cell key={`cell-clockify-${index}`} fill="#10B981" fillOpacity={selectedDay && entry.dateStr !== selectedDay ? 0.3 : 1} />
+                        ))}
+                    </Bar>
                     <Bar name="Manual" dataKey="manualHours" stackId="a" fill="#A855F7" radius={[4, 4, 0, 0]} cursor="pointer" onClick={handleBarClick}>
                         {aggregatedData.map((entry, index) => (
                             <Cell key={`cell-manual-${index}`} fill="#A855F7" fillOpacity={selectedDay && entry.dateStr !== selectedDay ? 0.3 : 1} />
@@ -1155,6 +1200,8 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                                     ? 'bg-pink-100 dark:bg-pink-900 text-pink-800 dark:text-pink-200'
                                     : entry.source === 'MANUAL'
                                     ? 'bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200'
+                                    : entry.source === 'CLOCKIFY'
+                                    ? 'bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200'
                                     : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
                                 }`}>
                                   {entry.source}
@@ -1395,9 +1442,12 @@ function SyncModal({ service, onClose, onSync, syncing }: { service: string, onC
     const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); onSync(start, end); };
 
     // Farben basierend auf Service
-    const isToggl = service === 'TOGGL';
-    const colorClass = isToggl ? 'text-pink-600' : 'text-blue-600';
-    const bgBtnClass = isToggl ? 'bg-pink-600 hover:bg-pink-700' : 'bg-blue-600 hover:bg-blue-700';
+    const colorClass = service === 'TOGGL' ? 'text-pink-600' : service === 'CLOCKIFY' ? 'text-emerald-600' : 'text-blue-600';
+    const bgBtnClass = service === 'TOGGL'
+        ? 'bg-pink-600 hover:bg-pink-700'
+        : service === 'CLOCKIFY'
+        ? 'bg-emerald-600 hover:bg-emerald-700'
+        : 'bg-blue-600 hover:bg-blue-700';
 
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">

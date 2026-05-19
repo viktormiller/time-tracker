@@ -66,6 +66,8 @@ export function Settings({ onBack, toggleSidebar, onLimitsChanged }: SettingsPro
         return 'pink';
       case 'TEMPO':
         return 'blue';
+      case 'CLOCKIFY':
+        return 'emerald';
       case 'MANUAL':
         return 'purple';
       default:

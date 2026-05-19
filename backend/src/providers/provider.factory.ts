@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { TimeProvider } from './provider.interface';
 import { TogglProvider } from './toggl.provider';
 import { TempoProvider } from './tempo.provider';
+import { ClockifyProvider } from './clockify.provider';
 
 export class ProviderFactory {
   private static providers: Map<string, TimeProvider> = new Map();
@@ -24,6 +25,9 @@ export class ProviderFactory {
       case 'TEMPO':
         provider = new TempoProvider(prisma);
         break;
+      case 'CLOCKIFY':
+        provider = new ClockifyProvider(prisma);
+        break;
       default:
         throw new Error(`Unknown provider: ${source}`);
     }
@@ -36,7 +40,8 @@ export class ProviderFactory {
   static getAllProviders(prisma: PrismaClient): TimeProvider[] {
     return [
       this.getProvider('TOGGL', prisma),
-      this.getProvider('TEMPO', prisma)
+      this.getProvider('TEMPO', prisma),
+      this.getProvider('CLOCKIFY', prisma)
     ];
   }
 

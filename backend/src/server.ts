@@ -6,6 +6,7 @@ import cors from '@fastify/cors';
 import { PrismaClient } from '@prisma/client';
 import { TogglCsvAdapter } from './adapters/toggl-csv.adapter';
 import { TempoCsvAdapter } from './adapters/tempo-csv.adapter';
+import { ClockifyCsvAdapter } from './adapters/clockify-csv.adapter';
 import { ImportAdapter } from './adapters/import-adapter.interface';
 import authPlugin from './plugins/auth';
 import sessionPlugin from './plugins/session';
@@ -140,9 +141,10 @@ app.register(async (protectedRoutes) => {
   // Helper: detect CSV adapter from filename/content
   function detectAdapter(filename: string, fileContent: string): ImportAdapter {
     if (filename.includes('toggl')) return new TogglCsvAdapter();
+    if (filename.includes('clockify')) return new ClockifyCsvAdapter();
     if (filename.includes('report') && fileContent.includes('01/Dec')) return new TempoCsvAdapter();
     if (fileContent.includes('Issue,Key')) return new TempoCsvAdapter();
-    throw new Error('Unknown CSV format. Please rename file to include "toggl" or ensure Tempo format.');
+    throw new Error('Unknown CSV format. Please rename file to include "toggl", "clockify" or ensure Tempo format.');
   }
 
   // 2a. Upload Preview Endpoint
@@ -165,7 +167,7 @@ app.register(async (protectedRoutes) => {
     }
 
     const result = await adapter.parse(fileContent, timezone);
-    const source = filename.includes('toggl') ? 'TOGGL' : 'TEMPO';
+    const source = filename.includes('toggl') ? 'TOGGL' : filename.includes('clockify') ? 'CLOCKIFY' : 'TEMPO';
 
     return {
       entries: result.entries.map(e => ({
@@ -269,6 +271,28 @@ app.register(async (protectedRoutes) => {
       const { startDate, endDate } = req.body || {};
 
       const provider = ProviderFactory.getProvider('TEMPO', prisma);
+
+      try {
+          const result = await provider.sync({
+            forceRefresh: force,
+            customStart: startDate,
+            customEnd: endDate
+          });
+          return result;
+      } catch (error) {
+          req.log.error(error);
+          return reply.code(500).send({ error: (error as Error).message });
+      }
+  });
+
+  // Clockify Sync Route
+  protectedRoutes.post<{ Querystring: { force: string }, Body: { startDate?: string, endDate?: string } }>('/sync/clockify', async (req, reply) => {
+      const force = req.query.force === 'true';
+      const { startDate, endDate } = req.body || {};
+
+      console.log('[API Route] /sync/clockify called with body:', req.body);
+
+      const provider = ProviderFactory.getProvider('CLOCKIFY', prisma);
 
       try {
           const result = await provider.sync({
