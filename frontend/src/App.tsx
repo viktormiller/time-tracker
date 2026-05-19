@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import {
   Upload, Loader2, RefreshCw, RotateCw, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown,
-  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut, Download, FileText, Plus, Gauge, Menu, AlertTriangle, CheckSquare, Timer
+  MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut, Download, FileText, Plus, Gauge, Menu, AlertTriangle, Timer
 } from 'lucide-react';
 import {
   format, parseISO, isSameDay, startOfToday, endOfToday,
@@ -35,7 +35,6 @@ import { getHourLimits, type HourLimits } from './lib/hour-limits';
 import { ThemeToggle } from './components/ThemeToggle';
 import { useTheme, ThemeProvider } from './hooks/useTheme';
 import { exportToCSV } from './lib/csv-export';
-import { CustomSelect } from './components/CustomSelect';
 import { AddEntry } from './pages/AddEntry';
 import { Settings as SettingsPage } from './pages/Settings';
 import { Estimates } from './pages/Estimates';
