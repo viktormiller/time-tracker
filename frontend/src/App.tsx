@@ -1272,42 +1272,67 @@ function TogglDateRangePicker({
 
     return (
         <div className="relative" ref={containerRef}>
-            {/* TRIGGER BUTTON (Like Screenshot) */}
-            <div className="flex items-center gap-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md p-0.5 hover:border-gray-400 dark:hover:border-gray-500 transition-colors shadow-sm">
-                 <button onClick={onPrev} disabled={preset === 'ALL'} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300 disabled:opacity-30"><ChevronLeft size={16}/></button>
-                 <button
+            {/* TRIGGER */}
+            <div className={`inline-flex items-stretch h-10 rounded-lg border bg-gray-50 dark:bg-gray-700 overflow-hidden transition-colors ${
+                isOpen
+                    ? 'border-indigo-500/50'
+                    : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
+            }`}>
+                <button
+                    onClick={onPrev}
+                    disabled={preset === 'ALL'}
+                    aria-label="Vorheriger Zeitraum"
+                    className="w-9 inline-flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600/60 disabled:opacity-30 disabled:pointer-events-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500/40"
+                >
+                    <ChevronLeft size={16}/>
+                </button>
+                <button
                     onClick={() => setIsOpen(!isOpen)}
-                    className="flex items-center gap-2 px-2 py-1 hover:bg-gray-50 dark:hover:bg-gray-700 rounded text-sm font-medium text-gray-700 dark:text-gray-200 min-w-[180px] justify-center"
-                 >
-                    <CalendarIcon size={14} className="text-gray-500 dark:text-gray-400" />
-                    <span>{dateText}</span>
-                    <ChevronDown size={12} className="text-gray-400 dark:text-gray-500" />
-                 </button>
-                 <button onClick={onNext} disabled={preset === 'ALL'} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300 disabled:opacity-30"><ChevronRight size={16}/></button>
+                    aria-haspopup="dialog"
+                    aria-expanded={isOpen}
+                    className="flex items-center gap-2 px-3 text-sm font-medium text-gray-700 dark:text-gray-100 min-w-[220px] justify-center border-x border-gray-200 dark:border-gray-600 hover:bg-gray-100/70 dark:hover:bg-gray-600/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500/40"
+                >
+                    <CalendarIcon size={14} className="text-gray-400 dark:text-gray-500 flex-shrink-0"/>
+                    <span className="tabular-nums">{dateText}</span>
+                    <ChevronDown size={12} className={`text-gray-400 dark:text-gray-500 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`}/>
+                </button>
+                <button
+                    onClick={onNext}
+                    disabled={preset === 'ALL'}
+                    aria-label="Nächster Zeitraum"
+                    className="w-9 inline-flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600/60 disabled:opacity-30 disabled:pointer-events-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500/40"
+                >
+                    <ChevronRight size={16}/>
+                </button>
             </div>
 
-            {/* POPOVER CONTENT */}
+            {/* POPOVER */}
             {isOpen && (
-                <div className="absolute top-full left-0 mt-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-50 flex overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                <div className="absolute top-full left-0 mt-2 bg-white dark:bg-gray-800 rounded-xl shadow-xl shadow-black/30 border border-gray-200 dark:border-gray-700 z-50 flex overflow-hidden animate-in fade-in zoom-in-95 duration-100">
 
-                    {/* LEFT SIDEBAR (PRESETS) */}
-                    <div className="w-40 border-r border-gray-100 dark:border-gray-700 p-2 flex flex-col gap-0.5 bg-gray-50/50 dark:bg-gray-900/50">
-                        {PRESETS.map(p => (
-                            <button
-                                key={p.val}
-                                onClick={() => { onPresetChange(p.val); setIsOpen(false); }}
-                                className={`text-left px-3 py-2 rounded-md text-sm transition-colors flex justify-between items-center ${
-                                    preset === p.val
-                                    ? 'bg-white dark:bg-gray-700 text-pink-600 dark:text-pink-400 font-medium shadow-sm ring-1 ring-gray-200 dark:ring-gray-600'
-                                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 hover:text-gray-900 dark:hover:text-gray-100'
-                                }`}
-                            >
-                                {p.label}
-                            </button>
-                        ))}
+                    {/* PRESETS */}
+                    <div className="w-44 border-r border-gray-100 dark:border-gray-700 p-2 flex flex-col gap-0.5 bg-gray-50/60 dark:bg-gray-900/40">
+                        {PRESETS.map(p => {
+                            const isActive = preset === p.val;
+                            return (
+                                <button
+                                    key={p.val}
+                                    onClick={() => { onPresetChange(p.val); setIsOpen(false); }}
+                                    aria-pressed={isActive}
+                                    className={`flex items-center gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                                        isActive
+                                            ? 'bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-200 font-medium'
+                                            : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700/60'
+                                    }`}
+                                >
+                                    <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 transition-colors ${isActive ? 'bg-indigo-500' : 'bg-transparent'}`}/>
+                                    <span className="flex-1">{p.label}</span>
+                                </button>
+                            );
+                        })}
                     </div>
 
-                    {/* RIGHT SIDE (CALENDAR) */}
+                    {/* CALENDAR */}
                     <div className="p-4">
                         <DayPicker
                             mode="range"
@@ -1318,7 +1343,6 @@ function TogglDateRangePicker({
                             numberOfMonths={1}
                             pagedNavigation
                             showOutsideDays
-                            className="rdp-custom"
                         />
                     </div>
                 </div>
