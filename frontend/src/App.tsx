@@ -4,7 +4,7 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList, Cell, ReferenceLine
 } from 'recharts';
 import {
-  Upload, Loader2, RefreshCw, RotateCw, Filter, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown,
+  Upload, Loader2, RefreshCw, RotateCw, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown,
   MousePointerClick, Trash2, Pencil, Save, X, ChevronLeft, ChevronRight, Settings, CloudLightning, Calendar as CalendarIcon, Layers, LogOut, Download, FileText, Plus, Gauge, Menu, AlertTriangle, CheckSquare, Timer
 } from 'lucide-react';
 import {
@@ -28,6 +28,8 @@ import LoginForm from './components/LoginForm';
 import { TimezoneSelector } from './components/TimezoneSelector';
 import { ProjectCell } from './components/ProjectCell';
 import { getTimezone, setTimezone } from './lib/timezone';
+import { getSourceFilter, setSourceFilter } from './lib/source-filter';
+import { SourceFilterToggle } from './components/SourceFilterToggle';
 import { getHourLimits, type HourLimits } from './lib/hour-limits';
 import { ThemeToggle } from './components/ThemeToggle';
 import { useTheme, ThemeProvider } from './hooks/useTheme';
@@ -146,7 +148,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const [exportAction, setExportAction] = useState<'csv' | 'pdf'>('csv');
   
   // Filter & UI States
-  const [filterSource, setFilterSource] = useState<string>('ALL');
+  const [filterSources, setFilterSources] = useState<string[]>(getSourceFilter());
   const [filterProject, setFilterProject] = useState<string>('ALL');
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'date', direction: 'desc' });
@@ -303,7 +305,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   };
 
   useEffect(() => { fetchData(); }, []);
-  useEffect(() => { setSelectedDay(null); }, [filterSource, filterProject, dateRange]);
+  useEffect(() => { setSelectedDay(null); }, [filterSources, filterProject, dateRange]);
 
   useEffect(() => {
       const handler = (e: MouseEvent) => {
@@ -372,14 +374,14 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   // --- LOGIC: FILTERING ---
   const filteredEntries = useMemo(() => {
     return entries.filter(entry => {
-      const matchesSource = filterSource === 'ALL' || entry.source === filterSource;
+      const matchesSource = filterSources.length === 0 || filterSources.includes(entry.source);
       const matchesProject = filterProject === 'ALL' || entry.project === filterProject;
       const entryDate = parseISO(entry.date);
       let matchesDate = true;
       if (datePreset !== 'ALL') matchesDate = isWithinInterval(entryDate, { start: dateRange.start, end: dateRange.end });
       return matchesSource && matchesProject && matchesDate;
     });
-  }, [entries, filterSource, filterProject, dateRange, datePreset]);
+  }, [entries, filterSources, filterProject, dateRange, datePreset]);
 
   // --- CHART LOGIC (MIT LÜCKEN FÜLLEN) ---
   const aggregatedData: DailyStats[] = useMemo(() => {
@@ -994,18 +996,9 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
 
             <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
 
-            <CustomSelect
-                value={filterSource}
-                onChange={setFilterSource}
-                options={[
-                    { value: 'ALL', label: 'Alle Quellen' },
-                    { value: 'TOGGL', label: 'Toggl' },
-                    { value: 'TEMPO', label: 'Tempo' },
-                    { value: 'CLOCKIFY', label: 'Clockify' },
-                    { value: 'MANUAL', label: 'Manual' },
-                ]}
-                icon={<Filter size={16} className="text-gray-400 dark:text-gray-500" />}
-                width="w-44"
+            <SourceFilterToggle
+                value={filterSources}
+                onChange={(next) => { setFilterSources(next); setSourceFilter(next); }}
             />
             <CustomSelect
                 value={filterProject}
@@ -1016,8 +1009,8 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                 ]}
                 width="w-48"
             />
-            {(filterSource !== 'ALL' || filterProject !== 'ALL' || datePreset !== 'MONTH') && (
-                <button onClick={() => { setFilterSource('ALL'); setFilterProject('ALL'); handlePresetChange('MONTH'); }} className="flex items-center gap-1 text-sm text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 ml-auto">
+            {(filterSources.length > 0 || filterProject !== 'ALL' || datePreset !== 'MONTH') && (
+                <button onClick={() => { setFilterSources([]); setSourceFilter([]); setFilterProject('ALL'); handlePresetChange('MONTH'); }} className="flex items-center gap-1 text-sm text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 ml-auto">
                     <XCircle size={16} /> Reset
                 </button>
             )}
