@@ -30,6 +30,7 @@ import { ProjectCell } from './components/ProjectCell';
 import { getTimezone, setTimezone } from './lib/timezone';
 import { getSourceFilter, setSourceFilter } from './lib/source-filter';
 import { SourceFilterToggle } from './components/SourceFilterToggle';
+import { ProjectFilter } from './components/ProjectFilter';
 import { getHourLimits, type HourLimits } from './lib/hour-limits';
 import { ThemeToggle } from './components/ThemeToggle';
 import { useTheme, ThemeProvider } from './hooks/useTheme';
@@ -1000,14 +1001,10 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                 value={filterSources}
                 onChange={(next) => { setFilterSources(next); setSourceFilter(next); }}
             />
-            <CustomSelect
+            <ProjectFilter
                 value={filterProject}
                 onChange={setFilterProject}
-                options={[
-                    { value: 'ALL', label: 'Alle Projekte' },
-                    ...uniqueProjects.map(proj => ({ value: proj, label: proj })),
-                ]}
-                width="w-48"
+                projects={uniqueProjects}
             />
             {(filterSources.length > 0 || filterProject !== 'ALL' || datePreset !== 'MONTH') && (
                 <button onClick={() => { setFilterSources([]); setSourceFilter([]); setFilterProject('ALL'); handlePresetChange('MONTH'); }} className="flex items-center gap-1 text-sm text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 ml-auto">
