@@ -1,6 +1,9 @@
 import { ImportAdapter, ImportResult } from './import-adapter.interface';
-import { parse } from 'csv-parse/sync';
+import { parse as parseCsv } from 'csv-parse/sync';
+import { parse as parseDate, format as formatDate } from 'date-fns';
 import { fromZonedTime } from 'date-fns-tz';
+
+type DateFormat = 'dd/MM/yyyy' | 'MM/dd/yyyy' | 'yyyy-MM-dd';
 
 export class ClockifyCsvAdapter implements ImportAdapter {
   async parse(fileContent: string, timezone?: string): Promise<ImportResult> {
@@ -13,7 +16,7 @@ export class ClockifyCsvAdapter implements ImportAdapter {
       }
       cleanContent = cleanContent.trim();
 
-      const records = parse(cleanContent, {
+      const records = parseCsv(cleanContent, {
         columns: true,
         skip_empty_lines: true,
         trim: true,
@@ -22,16 +25,28 @@ export class ClockifyCsvAdapter implements ImportAdapter {
 
       console.log(`[Clockify] ${records.length} Zeilen gefunden.`);
 
+      const dateFormat = this.detectDateFormat(records);
+
       for (const row of records) {
-        // Clockify "Detailed Report" CSV columns:
-        // "Project","Description","Start Date","Start Time","End Date","End Time","Duration (h)"
+        // Clockify "Detailed Report" CSV columns (locale-dependent):
+        // "Project","Client","Description","Task","User","Group","Email","Tags","Billable",
+        // "Start Date","Start Time","End Date","End Time","Duration (h)","Duration (decimal)", ...
         const dateStr = row['Start Date'];
         const timeStr = row['Start Time'];
 
         if (!dateStr) continue;
 
         const tz = timezone || 'UTC';
-        const entryDate = fromZonedTime(`${dateStr}T${timeStr || '00:00:00'}`, tz);
+        const parsedLocal = parseDate(
+          `${dateStr} ${timeStr || '00:00:00'}`,
+          `${dateFormat} HH:mm:ss`,
+          new Date(0)
+        );
+        if (isNaN(parsedLocal.getTime())) {
+          result.errors.push(`Ungültiges Datum: "${dateStr} ${timeStr ?? ''}"`);
+          continue;
+        }
+        const entryDate = fromZonedTime(formatDate(parsedLocal, "yyyy-MM-dd'T'HH:mm:ss"), tz);
 
         const duration = this.parseDuration(row);
         if (isNaN(duration) || duration <= 0) continue;
@@ -77,20 +92,49 @@ export class ClockifyCsvAdapter implements ImportAdapter {
   }
 
   private parseDuration(row: Record<string, string>): number {
-    // Prefer decimal hours columns; fall back to HH:MM:SS "Duration".
-    const decimal = row['Duration (h)'] ?? row['Duration (decimal)'];
+    // Prefer the HH:MM:SS columns ("Duration (h)" or bare "Duration") since they preserve
+    // second-level precision. Fall back to "Duration (decimal)" which Clockify rounds to
+    // two decimals (lossy by up to ~36 seconds).
+    const hhmmss = [row['Duration (h)'], row['Duration']];
+    for (const raw of hhmmss) {
+      if (!raw) continue;
+      if (raw.includes(':')) {
+        const parts = raw.split(':').map(Number);
+        if (parts.length === 3 && parts.every(n => !isNaN(n))) return parts[0] + parts[1] / 60 + parts[2] / 3600;
+        if (parts.length === 2 && parts.every(n => !isNaN(n))) return parts[0] + parts[1] / 60;
+      }
+    }
+
+    const decimal = row['Duration (decimal)'];
     if (decimal !== undefined && decimal !== '') {
       const value = parseFloat(decimal.replace(',', '.'));
       if (!isNaN(value)) return value;
     }
 
-    const raw = row['Duration'];
-    if (!raw) return 0;
-    if (raw.includes(':')) {
-      const parts = raw.split(':').map(Number);
-      if (parts.length === 3) return parts[0] + parts[1] / 60 + parts[2] / 3600;
-      if (parts.length === 2) return parts[0] + parts[1] / 60;
+    // Last resort: a numeric "Duration" without ":".
+    const bare = row['Duration'];
+    if (bare && !bare.includes(':')) {
+      const value = parseFloat(bare.replace(',', '.'));
+      if (!isNaN(value)) return value;
     }
-    return parseFloat(raw);
+    return 0;
+  }
+
+  private detectDateFormat(records: Record<string, string>[]): DateFormat {
+    let sawDdMmHint = false;
+    let sawMmDdHint = false;
+    for (const row of records) {
+      const dateStr = row['Start Date'];
+      if (!dateStr) continue;
+      if (dateStr.includes('-')) return 'yyyy-MM-dd';
+      const parts = dateStr.split('/');
+      if (parts.length !== 3) continue;
+      const first = Number(parts[0]);
+      const second = Number(parts[1]);
+      if (first > 12) sawDdMmHint = true;
+      if (second > 12) sawMmDdHint = true;
+    }
+    if (sawMmDdHint && !sawDdMmHint) return 'MM/dd/yyyy';
+    return 'dd/MM/yyyy';
   }
 }
