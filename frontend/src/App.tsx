@@ -479,6 +479,19 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const tableTotalHours = useMemo(() => tableEntries.reduce((acc, curr) => acc + curr.duration, 0), [tableEntries]);
   const uniqueProjects = useMemo(() => Array.from(new Set(entries.map(e => e.project).filter(Boolean))).sort(), [entries]);
 
+  // Chart: only render bars for selected sources (empty filter = show all).
+  // Recharts derives legend + tooltip from rendered series, so this also
+  // scopes the legend and tooltip to the selected source(s).
+  const STACK_ORDER = ['TOGGL', 'TEMPO', 'CLOCKIFY', 'MANUAL'] as const;
+  const isSourceVisible = (s: string) => filterSources.length === 0 || filterSources.includes(s);
+  const visibleSources = STACK_ORDER.filter(isSourceVisible);
+  const barRadius = (s: typeof STACK_ORDER[number]): [number, number, number, number] => {
+    const i = visibleSources.indexOf(s);
+    const top = i === visibleSources.length - 1;
+    const bottom = i === 0;
+    return [top ? 4 : 0, top ? 4 : 0, bottom ? 4 : 0, bottom ? 4 : 0];
+  };
+
   const handleSort = (key: SortKey) => setSortConfig(current => ({ key, direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc' }));
 
   const handleAddEntrySuccess = () => {
@@ -1096,27 +1109,35 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                     <YAxis tick={{fill: isDarkMode ? '#d1d5db' : '#9ca3af', fontSize: 12}} tickLine={false} axisLine={false} tickFormatter={(val) => `${val}h`} />
                     <Tooltip formatter={(val: number) => [val.toFixed(2) + ' h']} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: isDarkMode ? '#374151' : '#ffffff', color: isDarkMode ? '#f3f4f6' : '#1f2937' }} cursor={{fill: isDarkMode ? '#1f2937' : '#f9fafb'}} />
                     <Legend iconType="circle" />
-                    <Bar name="Toggl" dataKey="togglHours" stackId="a" fill="#E57CD8" radius={[0, 0, 4, 4]} cursor="pointer" onClick={handleBarClick}>
+                    {isSourceVisible('TOGGL') && (
+                    <Bar name="Toggl" dataKey="togglHours" stackId="a" fill="#E57CD8" radius={barRadius('TOGGL')} cursor="pointer" onClick={handleBarClick}>
                         {aggregatedData.map((entry, index) => (
                             <Cell key={`cell-toggl-${index}`} fill="#E57CD8" fillOpacity={selectedDay && entry.dateStr !== selectedDay ? 0.3 : 1} />
                         ))}
                     </Bar>
-                    <Bar name="Tempo" dataKey="tempoHours" stackId="a" fill="#3B82F6" radius={[0, 0, 0, 0]} cursor="pointer" onClick={handleBarClick}>
+                    )}
+                    {isSourceVisible('TEMPO') && (
+                    <Bar name="Tempo" dataKey="tempoHours" stackId="a" fill="#3B82F6" radius={barRadius('TEMPO')} cursor="pointer" onClick={handleBarClick}>
                         {aggregatedData.map((entry, index) => (
                             <Cell key={`cell-tempo-${index}`} fill="#3B82F6" fillOpacity={selectedDay && entry.dateStr !== selectedDay ? 0.3 : 1} />
                         ))}
                     </Bar>
-                    <Bar name="Clockify" dataKey="clockifyHours" stackId="a" fill="#10B981" radius={[0, 0, 0, 0]} cursor="pointer" onClick={handleBarClick}>
+                    )}
+                    {isSourceVisible('CLOCKIFY') && (
+                    <Bar name="Clockify" dataKey="clockifyHours" stackId="a" fill="#10B981" radius={barRadius('CLOCKIFY')} cursor="pointer" onClick={handleBarClick}>
                         {aggregatedData.map((entry, index) => (
                             <Cell key={`cell-clockify-${index}`} fill="#10B981" fillOpacity={selectedDay && entry.dateStr !== selectedDay ? 0.3 : 1} />
                         ))}
                     </Bar>
-                    <Bar name="Manual" dataKey="manualHours" stackId="a" fill="#A855F7" radius={[4, 4, 0, 0]} cursor="pointer" onClick={handleBarClick}>
+                    )}
+                    {isSourceVisible('MANUAL') && (
+                    <Bar name="Manual" dataKey="manualHours" stackId="a" fill="#A855F7" radius={barRadius('MANUAL')} cursor="pointer" onClick={handleBarClick}>
                         {aggregatedData.map((entry, index) => (
                             <Cell key={`cell-manual-${index}`} fill="#A855F7" fillOpacity={selectedDay && entry.dateStr !== selectedDay ? 0.3 : 1} />
                         ))}
                     </Bar>
-                    <Line type="monotone" dataKey="totalHours" stroke="none" dot={false} activeDot={false} isAnimationActive={false}>
+                    )}
+                    <Line type="monotone" dataKey="totalHours" name="Gesamt" legendType="none" stroke="none" dot={false} activeDot={false} isAnimationActive={false}>
                         <LabelList dataKey="totalHours" position="top" offset={10} formatter={(val) => typeof val === 'number' && val > 0 ? val.toFixed(2) : ''} style={{ fontSize: '12px', fill: isDarkMode ? '#9ca3af' : '#6b7280', fontWeight: 600 }} />
                     </Line>
                   </ComposedChart>
@@ -1307,10 +1328,10 @@ function TogglDateRangePicker({
 
             {/* POPOVER */}
             {isOpen && (
-                <div className="absolute top-full left-0 mt-2 bg-white dark:bg-gray-800 rounded-xl shadow-xl shadow-black/30 border border-gray-200 dark:border-gray-700 z-50 flex overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                <div className="fixed left-4 right-4 top-auto mt-2 sm:absolute sm:top-full sm:left-0 sm:right-auto sm:w-auto bg-white dark:bg-gray-800 rounded-xl shadow-xl shadow-black/30 border border-gray-200 dark:border-gray-700 z-50 flex flex-col sm:flex-row overflow-hidden animate-in fade-in zoom-in-95 duration-100">
 
                     {/* PRESETS */}
-                    <div className="w-44 border-r border-gray-100 dark:border-gray-700 p-2 flex flex-col gap-0.5 bg-gray-50/60 dark:bg-gray-900/40">
+                    <div className="w-full sm:w-44 border-b sm:border-b-0 sm:border-r border-gray-100 dark:border-gray-700 p-2 flex flex-row flex-wrap sm:flex-col gap-0.5 bg-gray-50/60 dark:bg-gray-900/40">
                         {PRESETS.map(p => {
                             const isActive = preset === p.val;
                             return (
@@ -1332,7 +1353,7 @@ function TogglDateRangePicker({
                     </div>
 
                     {/* CALENDAR */}
-                    <div className="p-4">
+                    <div className="p-4 flex justify-center">
                         <DayPicker
                             mode="range"
                             defaultMonth={range.start}
