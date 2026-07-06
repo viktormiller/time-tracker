@@ -79,7 +79,18 @@ export function ReadingsTable({ readings, loading, onEdit, onDelete }: ReadingsT
   if (loading) {
     return (
       <div>
-        <table className="w-full">
+        {/* Mobile skeleton */}
+        <div className="md:hidden space-y-3">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="animate-pulse rounded-lg border border-gray-200 dark:border-gray-700 p-4 space-y-2">
+              <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-20"></div>
+              <div className="h-5 bg-gray-200 dark:bg-gray-700 rounded w-32"></div>
+              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-24"></div>
+            </div>
+          ))}
+        </div>
+        {/* Desktop skeleton */}
+        <table className="w-full hidden md:table">
           <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
@@ -142,6 +153,68 @@ export function ReadingsTable({ readings, loading, onEdit, onDelete }: ReadingsT
 
   return (
     <div>
+      {/* Mobile: card list (newest first per default sort) */}
+      <div className="md:hidden space-y-3">
+        {sortedReadings.map((reading) => (
+          <div
+            key={reading.id}
+            className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {format(new Date(reading.readingDate), 'dd.MM.yyyy')}
+                </p>
+                <p className="mt-0.5 text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  {formatValue(reading.value, reading.unit)}
+                </p>
+                {reading.consumption === null ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400 italic">Basislinie</p>
+                ) : (
+                  <p className="text-sm font-medium text-green-600 dark:text-green-400">
+                    +{formatValue(reading.consumption, reading.unit)}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                {reading.photoPath && (
+                  <button
+                    onClick={() => setLightboxPhoto(reading.photoPath)}
+                    className="rounded overflow-hidden mr-1"
+                    aria-label="Foto anzeigen"
+                  >
+                    <img
+                      src={reading.photoPath}
+                      alt="Zählerstand"
+                      className="w-12 h-12 object-cover rounded"
+                    />
+                  </button>
+                )}
+                <button
+                  onClick={() => onEdit(reading)}
+                  className="p-2 text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition"
+                  aria-label="Bearbeiten"
+                >
+                  <Edit2 size={18} />
+                </button>
+                <button
+                  onClick={() => handleDeleteClick(reading)}
+                  className="p-2 text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition"
+                  aria-label="Löschen"
+                >
+                  <Trash2 size={18} />
+                </button>
+              </div>
+            </div>
+            {reading.notes && (
+              <p className="mt-2 text-sm text-gray-600 dark:text-gray-400 break-words">{reading.notes}</p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop: sortable table */}
+      <div className="hidden md:block overflow-x-auto">
       <table className="w-full">
         <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
           <tr>
@@ -265,6 +338,7 @@ export function ReadingsTable({ readings, loading, onEdit, onDelete }: ReadingsT
           ))}
         </tbody>
       </table>
+      </div>
 
       {lightboxPhoto && (
         <PhotoLightbox

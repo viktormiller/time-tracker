@@ -7,16 +7,16 @@ interface MeterTabsProps {
 }
 
 const METER_TYPES = [
-  { key: 'STROM', label: 'Strom', icon: Zap },
-  { key: 'GAS', label: 'Gas', icon: Flame },
-  { key: 'WASSER_WARM', label: 'Wasser Warm', icon: Droplets },
+  { key: 'STROM', label: 'Strom', shortLabel: 'Strom', icon: Zap },
+  { key: 'GAS', label: 'Gas', shortLabel: 'Gas', icon: Flame },
+  { key: 'WASSER_WARM', label: 'Wasser Warm', shortLabel: 'Wasser', icon: Droplets },
 ] as const;
 
 export function MeterTabs({ activeTab, onTabChange, meterCounts }: MeterTabsProps) {
   return (
     <div className="border-b border-gray-200 dark:border-gray-700">
-      <div className="flex gap-1">
-        {METER_TYPES.map(({ key, label, icon: Icon }) => {
+      <div className="flex gap-1 overflow-x-auto">
+        {METER_TYPES.map(({ key, label, shortLabel, icon: Icon }) => {
           const isActive = activeTab === key;
           const count = meterCounts[key];
 
@@ -24,14 +24,15 @@ export function MeterTabs({ activeTab, onTabChange, meterCounts }: MeterTabsProp
             <button
               key={key}
               onClick={() => onTabChange(key)}
-              className={`flex items-center gap-2 px-4 py-3 font-medium text-sm transition-colors relative ${
+              className={`flex items-center gap-2 px-3 sm:px-4 py-3 font-medium text-sm transition-colors relative shrink-0 whitespace-nowrap ${
                 isActive
                   ? 'text-indigo-600 dark:text-indigo-400'
                   : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
               }`}
             >
               <Icon size={18} />
-              <span>{label}</span>
+              <span className="hidden sm:inline">{label}</span>
+              <span className="sm:hidden">{shortLabel}</span>
               {count > 0 && (
                 <span
                   className={`ml-1 px-2 py-0.5 rounded-full text-xs font-semibold ${

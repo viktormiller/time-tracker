@@ -59,7 +59,7 @@ export function PropertySelector({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full mt-1 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-30">
+        <div className="absolute left-0 top-full mt-1 w-80 max-w-[calc(100vw-2rem)] bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-30">
           {/* Active properties */}
           {active.map(p => (
             <div key={p.id} className="flex items-center group">
@@ -79,7 +79,7 @@ export function PropertySelector({
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onEdit(p); setOpen(false); }}
-                className="p-2 mr-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
+                className="p-2 mr-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
               >
                 <Edit2 size={14} />
               </button>
@@ -108,7 +108,7 @@ export function PropertySelector({
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onEdit(p); setOpen(false); }}
-                    className="p-2 mr-1 opacity-0 group-hover:opacity-100 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
+                    className="p-2 mr-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition"
                   >
                     <Edit2 size={14} />
                   </button>

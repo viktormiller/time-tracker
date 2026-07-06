@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
-import { X, Loader2, Camera, Trash2, Plus, Minus } from 'lucide-react';
+import { X, Loader2, Camera, Trash2, Image as ImageIcon } from 'lucide-react';
 import { useToast } from '../../hooks/useToast';
 
 function formatDE(value: number): string {
@@ -53,7 +53,8 @@ export function ReadingForm({ reading, meters, selectedMeterId, onClose, onSave 
   const [validationError, setValidationError] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(reading?.photoPath || null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     meterId: reading?.meterId || selectedMeterId || (meters[0]?.id || ''),
     readingDate: reading?.readingDate?.split('T')[0] || new Date().toISOString().split('T')[0],
@@ -63,6 +64,35 @@ export function ReadingForm({ reading, meters, selectedMeterId, onClose, onSave 
   const isNew = !reading;
   const [valueDisplay, setValueDisplay] = useState(() => isNew ? '' : formatDE(reading?.value || 0));
   const [valueFocused, setValueFocused] = useState(false);
+
+  // All readings of the selected meter, to show the previous reading and a
+  // live consumption preview while typing
+  const [meterReadings, setMeterReadings] = useState<{ id: string; readingDate: string; value: number }[]>([]);
+
+  useEffect(() => {
+    if (!formData.meterId) {
+      setMeterReadings([]);
+      return;
+    }
+    let cancelled = false;
+    axios
+      .get<{ id: string; readingDate: string; value: number }[]>(`/api/utilities/meters/${formData.meterId}/readings`)
+      .then((res) => { if (!cancelled) setMeterReadings(res.data); })
+      .catch(() => { if (!cancelled) setMeterReadings([]); });
+    return () => { cancelled = true; };
+  }, [formData.meterId]);
+
+  const previousReading = useMemo(() => {
+    const before = meterReadings
+      .filter((r) => r.id !== reading?.id && r.readingDate.split('T')[0] < formData.readingDate)
+      .sort((a, b) => a.readingDate.localeCompare(b.readingDate));
+    return before.length > 0 ? before[before.length - 1] : null;
+  }, [meterReadings, formData.readingDate, reading?.id]);
+
+  const currentValue = valueFocused ? parseDE(valueDisplay) : formData.value;
+  const liveConsumption = previousReading && currentValue > 0
+    ? Math.round((currentValue - previousReading.value) * 100) / 100
+    : null;
 
   // Clean up object URL on unmount
   useEffect(() => {
@@ -105,9 +135,8 @@ export function ReadingForm({ reading, meters, selectedMeterId, onClose, onSave 
     }
     setPhotoFile(null);
     setPhotoPreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+    if (galleryInputRef.current) galleryInputRef.current.value = '';
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -238,59 +267,51 @@ export function ReadingForm({ reading, meters, selectedMeterId, onClose, onSave 
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Zählerstand *
             </label>
-            <div className="flex items-stretch gap-0">
-              <button
-                type="button"
-                onClick={() => {
-                  const newVal = formData.value - 1;
-                  setFormData({ ...formData, value: newVal });
-                  setValueDisplay(formatDE(newVal));
-                  setValidationError(null);
-                }}
-                className="px-3 border border-r-0 border-gray-300 dark:border-gray-600 rounded-l-lg bg-gray-50 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-500 transition"
-              >
-                <Minus size={16} />
-              </button>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={valueFocused ? valueDisplay : (isNew && formData.value === 0 ? '' : formatDE(formData.value))}
-                onFocus={() => {
-                  setValueFocused(true);
-                  setValueDisplay(formData.value === 0 && isNew ? '' : String(formData.value));
-                }}
-                onBlur={() => {
-                  const parsed = parseDE(valueDisplay);
-                  setFormData({ ...formData, value: parsed });
-                  setValueDisplay(formatDE(parsed));
-                  setValueFocused(false);
-                }}
-                onChange={(e) => {
-                  setValueDisplay(e.target.value);
-                  setValidationError(null);
-                }}
-                placeholder={selectedMeter ? `Wert in ${selectedMeter.unit}` : 'Wert'}
-                className="flex-1 min-w-0 px-4 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent text-center"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  const newVal = formData.value + 1;
-                  setFormData({ ...formData, value: newVal });
-                  setValueDisplay(formatDE(newVal));
-                  setValidationError(null);
-                }}
-                className="px-3 border border-l-0 border-gray-300 dark:border-gray-600 rounded-r-lg bg-gray-50 dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-500 transition"
-              >
-                <Plus size={16} />
-              </button>
-            </div>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={valueFocused ? valueDisplay : (isNew && formData.value === 0 ? '' : formatDE(formData.value))}
+              onFocus={() => {
+                setValueFocused(true);
+                setValueDisplay(formData.value === 0 && isNew ? '' : String(formData.value));
+              }}
+              onBlur={() => {
+                const parsed = parseDE(valueDisplay);
+                setFormData({ ...formData, value: parsed });
+                setValueDisplay(formatDE(parsed));
+                setValueFocused(false);
+              }}
+              onChange={(e) => {
+                setValueDisplay(e.target.value);
+                setValidationError(null);
+              }}
+              placeholder={selectedMeter ? `Wert in ${selectedMeter.unit}` : 'Wert'}
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-transparent"
+              required
+            />
             {validationError && (
               <p className="mt-2 text-sm text-red-600 dark:text-red-400 flex items-start gap-2">
                 <span className="font-medium">⚠</span>
                 <span>{validationError}</span>
               </p>
+            )}
+            {previousReading && !validationError && (
+              liveConsumption !== null && liveConsumption < 0 ? (
+                <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+                  ⚠ Liegt unter der letzten Ablesung ({formatDE(previousReading.value)} {selectedMeter?.unit} am{' '}
+                  {new Date(previousReading.readingDate).toLocaleDateString('de-DE')})
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  Letzte Ablesung: {formatDE(previousReading.value)} {selectedMeter?.unit} am{' '}
+                  {new Date(previousReading.readingDate).toLocaleDateString('de-DE')}
+                  {liveConsumption !== null && liveConsumption > 0 && (
+                    <span className="font-medium text-green-600 dark:text-green-400">
+                      {' '}· Verbrauch: +{formatDE(liveConsumption)} {selectedMeter?.unit}
+                    </span>
+                  )}
+                </p>
+              )
             )}
           </div>
 
@@ -329,30 +350,58 @@ export function ReadingForm({ reading, meters, selectedMeterId, onClose, onSave 
                 </button>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-2 px-4 py-2 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-500 dark:hover:border-indigo-500 dark:hover:text-indigo-400 transition"
-              >
-                <Camera size={16} />
-                Foto hinzufügen
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="flex items-center gap-2 px-4 py-2 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:border-indigo-400 hover:text-indigo-500 dark:hover:border-indigo-500 dark:hover:text-indigo-400 transition"
+                >
+                  <Camera size={16} />
+                  Foto aufnehmen
+                </button>
+                <button
+                  type="button"
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="flex items-center gap-1.5 text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  <ImageIcon size={14} />
+                  aus Galerie
+                </button>
+              </div>
             )}
+            {/* capture="environment" opens the phone camera directly; on desktop it falls back to the file dialog */}
             <input
-              ref={fileInputRef}
+              ref={cameraInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              capture="environment"
+              onChange={handlePhotoSelect}
+              className="hidden"
+            />
+            <input
+              ref={galleryInputRef}
               type="file"
               accept="image/jpeg,image/png,image/webp"
               onChange={handlePhotoSelect}
               className="hidden"
             />
             {photoPreview && (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="mt-2 text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
-              >
-                Foto ersetzen
-              </button>
+              <div className="mt-2 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => cameraInputRef.current?.click()}
+                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  Neu aufnehmen
+                </button>
+                <button
+                  type="button"
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  aus Galerie wählen
+                </button>
+              </div>
             )}
           </div>
 
