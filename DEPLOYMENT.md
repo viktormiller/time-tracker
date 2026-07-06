@@ -99,6 +99,7 @@ one-time backfill rewrites all historic `Issue #<id>` entries in the database.
 
 ## Common pitfalls
 
+- **502s after `--force-recreate backend`.** The frontend's nginx resolves the `backend` hostname once at startup and keeps proxying to the old container IP after a recreate. Always follow up with `docker compose -f docker-compose.yml -f docker-compose.prod.yml restart frontend`. (The full `deploy-prod.sh` is unaffected — it recreates everything.)
 - **644 vs 600.** Docker mirrors the host file's mode into `/run/secrets/`. Permissions narrower than 644 lock out the non-root container user.
 - **`docker compose restart` doesn't pick up new secrets.** Force-recreate the affected service.
 - **`backend/.env` is irrelevant in prod.** That file is on the host filesystem, but the backend runs inside the container with only the env vars defined by `docker-compose.prod.yml`. The env-var path is only for local dev.
