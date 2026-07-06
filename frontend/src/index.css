@@ -185,3 +185,47 @@ html.dark body {
   --tw-text-opacity: 1;
   color: #9da3af;
 }
+
+/* Scrollbars — slim, rounded, theme-aware instead of the chunky OS default.
+   WebKit/Blink path (Chrome, Brave, Safari, Edge): */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: rgba(100, 116, 139, 0.35); /* slate-500 */
+  border-radius: 8px;
+  border: 2px solid transparent; /* inset gap so the thumb floats */
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(100, 116, 139, 0.55);
+}
+/* second selector (no space) styles the root scrollbar of <html class="dark"> itself */
+.dark ::-webkit-scrollbar-thumb,
+.dark::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.25); /* slate-400 */
+}
+.dark ::-webkit-scrollbar-thumb:hover,
+.dark::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(148, 163, 184, 0.45);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox — scoped via @supports because the standard properties would
+   disable the ::-webkit-scrollbar styling in Blink if set there too */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(100, 116, 139, 0.45) transparent;
+  }
+  .dark,
+  .dark * {
+    scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+  }
+}
