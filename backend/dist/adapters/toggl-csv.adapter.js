@@ -2,8 +2,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TogglCsvAdapter = void 0;
 const sync_1 = require("csv-parse/sync");
+const date_fns_tz_1 = require("date-fns-tz");
 class TogglCsvAdapter {
-    async parse(fileContent) {
+    async parse(fileContent, timezone) {
         const result = { entries: [], errors: [] };
         try {
             // 1. Bereinigung: BOM manuell entfernen
@@ -30,27 +31,43 @@ class TogglCsvAdapter {
                 const timeStr = row['Start time'];
                 if (!dateStr)
                     continue;
-                const fullDate = new Date(`${dateStr}T${timeStr || '00:00:00'}`);
+                // Convert local date+time to UTC using the provided timezone
+                const tz = timezone || 'UTC';
+                const entryDate = (0, date_fns_tz_1.fromZonedTime)(`${dateStr}T${timeStr || '00:00:00'}`, tz);
+                // Full datetime for synthetic ID uniqueness
+                const fullDateTime = entryDate;
                 const durationRaw = row['Duration'];
                 const duration = this.parseDuration(durationRaw);
                 if (isNaN(duration) || duration <= 0)
                     continue;
                 const project = row['Project'] || 'No Project';
                 const description = row['Description'] || '';
-                // NEU: Synthetische ID generieren
-                // Wir nehmen Datum + Zeit + Projekt als Eindeutigkeitsmerkmal für CSVs
-                // .getTime() liefert den Timestamp als Zahl
-                const syntheticId = `CSV_TOGGL_${fullDate.getTime()}_${project.replace(/\s/g, '')}`;
+                // Synthetische ID: Datum + Zeit + Projekt als Eindeutigkeitsmerkmal
+                const syntheticId = `CSV_TOGGL_${fullDateTime.getTime()}_${project.replace(/\s/g, '')}`;
+                // Extract start/stop times as HH:mm
+                const startTime = timeStr ? timeStr.substring(0, 5) : null;
+                const stopTimeStr = row['Stop time'];
+                const endTime = stopTimeStr ? stopTimeStr.substring(0, 5) : null;
                 result.entries.push({
                     source: 'TOGGL',
                     externalId: syntheticId,
-                    date: fullDate,
+                    date: entryDate,
                     duration: duration,
                     project: project,
                     description: description,
-                    startTime: null,
-                    endTime: null,
+                    startTime,
+                    endTime,
                 });
+            }
+            // Warn if CSV had rows but no entries were parsed (likely wrong report type)
+            if (records.length > 0 && result.entries.length === 0) {
+                const hasStartDate = records[0] && 'Start date' in records[0];
+                if (!hasStartDate) {
+                    result.errors.push(`Keine Einträge gefunden (${records.length} Zeilen). Möglicherweise ist dies ein Toggl-Zusammenfassungsbericht. Bitte einen detaillierten Bericht verwenden (mit Spalten: Start date, Start time, Duration, Project, Description).`);
+                }
+                else {
+                    result.errors.push(`Keine gültigen Einträge gefunden (${records.length} Zeilen). Bitte das CSV-Format prüfen.`);
+                }
             }
         }
         catch (error) {

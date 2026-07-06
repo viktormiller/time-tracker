@@ -10,10 +10,13 @@ const secrets_1 = require("../utils/secrets");
 class TogglProvider extends base_provider_1.BaseTimeProvider {
     constructor(prisma) {
         super(prisma, 'TOGGL', 'toggl_cache.json');
+        this.projectCache = new Map();
     }
     async sync(options = {}) {
         const { forceRefresh = false, customStart, customEnd } = options;
         console.log(`[Toggl Service] Request: Force=${forceRefresh}, Start=${customStart}, End=${customEnd}`);
+        // Fetch project names for mapping
+        await this.fetchProjectNames();
         let rawEntries = [];
         let usedCache = false;
         // Check if custom date range is provided
@@ -51,6 +54,71 @@ class TogglProvider extends base_provider_1.BaseTimeProvider {
             message: usedCache ? 'Geladen aus Cache' : 'Frisch von API geladen'
         };
     }
+    async fetchProjectNames() {
+        const token = (0, secrets_1.loadSecret)('toggl_api_token', { required: false });
+        if (!token) {
+            console.warn('[Toggl] No API token, skipping project name fetch');
+            return;
+        }
+        try {
+            console.log('[Toggl] Fetching project names...');
+            // First, get the user's workspace(s)
+            const meResponse = await axios_1.default.get('https://api.track.toggl.com/api/v9/me', {
+                headers: {
+                    Authorization: `Basic ${Buffer.from(`${token}:api_token`).toString('base64')}`
+                }
+            });
+            const defaultWorkspaceId = meResponse.data.default_workspace_id;
+            console.log('[Toggl] User data received:', {
+                defaultWorkspaceId,
+                workspacesCount: meResponse.data.workspaces?.length || 0
+            });
+            if (!defaultWorkspaceId) {
+                console.warn('[Toggl] No default workspace ID found');
+                return;
+            }
+            // Use the default workspace ID to fetch projects
+            console.log(`[Toggl] Fetching projects for workspace ${defaultWorkspaceId}...`);
+            try {
+                const projectsResponse = await axios_1.default.get(`https://api.track.toggl.com/api/v9/workspaces/${defaultWorkspaceId}/projects`, {
+                    headers: {
+                        Authorization: `Basic ${Buffer.from(`${token}:api_token`).toString('base64')}`
+                    }
+                });
+                const projects = projectsResponse.data || [];
+                console.log(`[Toggl] Found ${projects.length} projects in workspace`);
+                projects.forEach((project) => {
+                    console.log(`[Toggl] Caching project: ${project.id} -> ${project.name}`);
+                    this.projectCache.set(project.id, project.name);
+                });
+            }
+            catch (error) {
+                if (axios_1.default.isAxiosError(error)) {
+                    console.error(`[Toggl] Error fetching projects for workspace ${defaultWorkspaceId}:`, {
+                        status: error.response?.status,
+                        statusText: error.response?.statusText,
+                        data: error.response?.data
+                    });
+                }
+                else {
+                    console.error(`[Toggl] Error fetching projects for workspace ${defaultWorkspaceId}:`, error);
+                }
+            }
+            console.log(`[Toggl] Loaded ${this.projectCache.size} project names total`);
+        }
+        catch (error) {
+            if (axios_1.default.isAxiosError(error)) {
+                console.error('[Toggl] Error fetching user data:', {
+                    status: error.response?.status,
+                    statusText: error.response?.statusText,
+                    data: error.response?.data
+                });
+            }
+            else {
+                console.error('[Toggl] Error fetching project names:', error);
+            }
+        }
+    }
     async fetchFromAPI(startDate, endDate) {
         const token = (0, secrets_1.loadSecret)('toggl_api_token', { required: false });
         if (!token)
@@ -82,7 +150,11 @@ class TogglProvider extends base_provider_1.BaseTimeProvider {
     }
     transformEntry(rawEntry) {
         const durationHours = rawEntry.duration / 3600;
-        const projectName = rawEntry.project_id ? `Proj-${rawEntry.project_id}` : 'No Project';
+        // Use real project name from cache if available, otherwise fall back to ID
+        let projectName = 'No Project';
+        if (rawEntry.project_id) {
+            projectName = this.projectCache.get(rawEntry.project_id) || `Proj-${rawEntry.project_id}`;
+        }
         return {
             externalId: rawEntry.id.toString(),
             date: new Date(rawEntry.start),

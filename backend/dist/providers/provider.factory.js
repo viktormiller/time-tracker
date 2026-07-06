@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ProviderFactory = void 0;
 const toggl_provider_1 = require("./toggl.provider");
 const tempo_provider_1 = require("./tempo.provider");
+const clockify_provider_1 = require("./clockify.provider");
 class ProviderFactory {
     static getProvider(source, prisma) {
         const key = source.toUpperCase();
@@ -19,6 +20,9 @@ class ProviderFactory {
             case 'TEMPO':
                 provider = new tempo_provider_1.TempoProvider(prisma);
                 break;
+            case 'CLOCKIFY':
+                provider = new clockify_provider_1.ClockifyProvider(prisma);
+                break;
             default:
                 throw new Error(`Unknown provider: ${source}`);
         }
@@ -29,7 +33,8 @@ class ProviderFactory {
     static getAllProviders(prisma) {
         return [
             this.getProvider('TOGGL', prisma),
-            this.getProvider('TEMPO', prisma)
+            this.getProvider('TEMPO', prisma),
+            this.getProvider('CLOCKIFY', prisma)
         ];
     }
     static clearCache() {

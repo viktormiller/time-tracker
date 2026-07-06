@@ -4,8 +4,9 @@ exports.TempoCsvAdapter = void 0;
 const sync_1 = require("csv-parse/sync");
 const date_fns_1 = require("date-fns");
 const locale_1 = require("date-fns/locale"); // Import English locale for "Dec", "Jan"
+const date_fns_tz_1 = require("date-fns-tz");
 class TempoCsvAdapter {
-    async parse(fileContent) {
+    async parse(fileContent, timezone) {
         const result = { entries: [], errors: [] };
         try {
             // Parse as arrays (no headers yet, because headers are dynamic dates)
@@ -60,10 +61,12 @@ class TempoCsvAdapter {
                             // fasst Tempo CSV das meist eh zusammen. Falls nicht, wäre das hier ein Problem.
                             // Für die Matrix-Ansicht ist das aber okay.
                             const syntheticId = `CSV_TEMPO_${dateObj.getTime()}_${key}_${hours}`;
+                            const tz = timezone || 'UTC';
+                            const localDateStr = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}T00:00:00`;
                             result.entries.push({
                                 source: 'TEMPO',
                                 externalId: syntheticId,
-                                date: dateObj,
+                                date: (0, date_fns_tz_1.fromZonedTime)(localDateStr, tz),
                                 duration: hours,
                                 project: key,
                                 description: issue,

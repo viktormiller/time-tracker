@@ -58,15 +58,15 @@ async function default_1(fastify) {
         request.session.set('authenticated', true);
         // Generate access token (short-lived: 15 minutes)
         const accessToken = fastify.jwt.sign({ userId: 1, role: 'admin' }, { expiresIn: '15m' });
-        // Generate refresh token (long-lived: 30 days)
-        const refreshToken = fastify.jwt.sign({ userId: 1, type: 'refresh' }, { expiresIn: '30d' });
+        // Generate refresh token (long-lived: 7 days)
+        const refreshToken = fastify.jwt.sign({ userId: 1, type: 'refresh' }, { expiresIn: '7d' });
         // Store refresh token in HttpOnly cookie (CSRF protection)
         reply.setCookie('refreshToken', refreshToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'strict',
             path: '/',
-            maxAge: 30 * 24 * 60 * 60, // 30 days in seconds
+            maxAge: 7 * 24 * 60 * 60, // 7 days in seconds
         });
         // Return access token to client
         return {
@@ -99,14 +99,14 @@ async function default_1(fastify) {
         // Generate NEW access token
         const accessToken = fastify.jwt.sign({ userId: decoded.userId, role: 'admin' }, { expiresIn: '15m' });
         // Generate NEW refresh token (rotation prevents token reuse)
-        const newRefreshToken = fastify.jwt.sign({ userId: decoded.userId, type: 'refresh' }, { expiresIn: '30d' });
+        const newRefreshToken = fastify.jwt.sign({ userId: decoded.userId, type: 'refresh' }, { expiresIn: '7d' });
         // Update refresh token cookie
         reply.setCookie('refreshToken', newRefreshToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'strict',
             path: '/',
-            maxAge: 30 * 24 * 60 * 60, // 30 days in seconds
+            maxAge: 7 * 24 * 60 * 60, // 7 days in seconds
         });
         // Return new access token
         return {
@@ -171,8 +171,8 @@ async function default_1(fastify) {
         }
         // Generate access token (short-lived: 15 minutes)
         const accessToken = fastify.jwt.sign({ userId: 1, role: 'admin' }, { expiresIn: '15m' });
-        // Generate refresh token (long-lived: 30 days)
-        const refreshToken = fastify.jwt.sign({ userId: 1, type: 'refresh' }, { expiresIn: '30d' });
+        // Generate refresh token (long-lived: 7 days)
+        const refreshToken = fastify.jwt.sign({ userId: 1, type: 'refresh' }, { expiresIn: '7d' });
         // Return BOTH tokens in response body (for CLI use)
         return {
             accessToken,
@@ -205,7 +205,7 @@ async function default_1(fastify) {
         // Generate NEW access token
         const accessToken = fastify.jwt.sign({ userId: decoded.userId, role: 'admin' }, { expiresIn: '15m' });
         // Generate NEW refresh token (rotation prevents token reuse)
-        const newRefreshToken = fastify.jwt.sign({ userId: decoded.userId, type: 'refresh' }, { expiresIn: '30d' });
+        const newRefreshToken = fastify.jwt.sign({ userId: decoded.userId, type: 'refresh' }, { expiresIn: '7d' });
         // Return new tokens in response body
         return {
             accessToken,

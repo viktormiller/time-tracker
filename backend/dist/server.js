@@ -11,13 +11,15 @@ const cors_1 = __importDefault(require("@fastify/cors"));
 const client_1 = require("@prisma/client");
 const toggl_csv_adapter_1 = require("./adapters/toggl-csv.adapter");
 const tempo_csv_adapter_1 = require("./adapters/tempo-csv.adapter");
+const clockify_csv_adapter_1 = require("./adapters/clockify-csv.adapter");
 const auth_1 = __importDefault(require("./plugins/auth"));
 const session_1 = __importDefault(require("./plugins/session"));
 const security_1 = __importDefault(require("./plugins/security"));
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
 const export_routes_1 = __importDefault(require("./routes/export.routes"));
 const summary_routes_1 = __importDefault(require("./routes/summary.routes"));
-const estimate_routes_js_1 = require("./routes/estimate.routes.js");
+const estimate_routes_1 = require("./routes/estimate.routes");
+const utility_routes_1 = require("./routes/utility.routes");
 const time_entry_schema_1 = require("./schemas/time-entry.schema");
 const date_fns_tz_1 = require("date-fns-tz");
 const prisma = new client_1.PrismaClient();
@@ -54,7 +56,9 @@ app.register(async (protectedRoutes) => {
     // Register summary routes
     protectedRoutes.register(summary_routes_1.default);
     // Register estimate routes
-    protectedRoutes.register(estimate_routes_js_1.estimateRoutes);
+    protectedRoutes.register(estimate_routes_1.estimateRoutes);
+    // Register utility routes
+    protectedRoutes.register(utility_routes_1.utilityRoutes);
     // Get Jira configuration for frontend
     protectedRoutes.get('/config/jira', async (request, reply) => {
         return {
@@ -112,36 +116,69 @@ app.register(async (protectedRoutes) => {
         });
         return entries;
     });
-    // 2. Upload Endpoint
+    // Helper: detect CSV adapter from filename/content
+    function detectAdapter(filename, fileContent) {
+        if (filename.includes('toggl'))
+            return new toggl_csv_adapter_1.TogglCsvAdapter();
+        if (filename.includes('clockify'))
+            return new clockify_csv_adapter_1.ClockifyCsvAdapter();
+        if (filename.includes('report') && fileContent.includes('01/Dec'))
+            return new tempo_csv_adapter_1.TempoCsvAdapter();
+        if (fileContent.includes('Issue,Key'))
+            return new tempo_csv_adapter_1.TempoCsvAdapter();
+        throw new Error('Unknown CSV format. Please rename file to include "toggl", "clockify" or ensure Tempo format.');
+    }
+    // 2a. Upload Preview Endpoint
+    protectedRoutes.post('/upload/preview', async (req, reply) => {
+        const data = await req.file();
+        if (!data) {
+            return reply.code(400).send({ error: 'No file uploaded' });
+        }
+        const timezone = req.query.timezone;
+        const buffer = await data.toBuffer();
+        const fileContent = buffer.toString('utf-8');
+        const filename = data.filename.toLowerCase();
+        let adapter;
+        try {
+            adapter = detectAdapter(filename, fileContent);
+        }
+        catch (e) {
+            return reply.code(400).send({ error: e.message });
+        }
+        const result = await adapter.parse(fileContent, timezone);
+        const source = filename.includes('toggl') ? 'TOGGL' : filename.includes('clockify') ? 'CLOCKIFY' : 'TEMPO';
+        return {
+            entries: result.entries.map(e => ({
+                date: e.date,
+                duration: e.duration,
+                project: e.project,
+                description: e.description,
+                startTime: e.startTime,
+                endTime: e.endTime,
+            })),
+            entryCount: result.entries.length,
+            errors: result.errors,
+            source,
+        };
+    });
+    // 2b. Upload Endpoint
     protectedRoutes.post('/upload', async (req, reply) => {
         const data = await req.file();
         if (!data) {
             return reply.code(400).send({ error: 'No file uploaded' });
         }
+        const timezone = req.query.timezone;
         const buffer = await data.toBuffer();
         const fileContent = buffer.toString('utf-8');
         const filename = data.filename.toLowerCase();
         let adapter;
-        // Simple strategy selection based on filename or content detection
-        if (filename.includes('toggl')) {
-            adapter = new toggl_csv_adapter_1.TogglCsvAdapter();
+        try {
+            adapter = detectAdapter(filename, fileContent);
         }
-        else if (filename.includes('report') && fileContent.includes('01/Dec')) {
-            // Basic heuristic for Tempo based on your file naming/content
-            adapter = new tempo_csv_adapter_1.TempoCsvAdapter();
+        catch (e) {
+            return reply.code(400).send({ error: e.message });
         }
-        else {
-            // Fallback detection logic could go here
-            // For now, default to Tempo if it looks like a matrix?
-            // Let's assume explicit naming for safety first.
-            if (fileContent.includes('Issue,Key')) {
-                adapter = new tempo_csv_adapter_1.TempoCsvAdapter();
-            }
-            else {
-                return reply.code(400).send({ error: 'Unknown CSV format. Please rename file to include "toggl" or ensure Tempo format.' });
-            }
-        }
-        const result = await adapter.parse(fileContent);
+        const result = await adapter.parse(fileContent, timezone);
         if (result.errors.length > 0) {
             req.log.error(result.errors);
         }
@@ -212,6 +249,25 @@ app.register(async (protectedRoutes) => {
             return reply.code(500).send({ error: error.message });
         }
     });
+    // Clockify Sync Route
+    protectedRoutes.post('/sync/clockify', async (req, reply) => {
+        const force = req.query.force === 'true';
+        const { startDate, endDate } = req.body || {};
+        console.log('[API Route] /sync/clockify called with body:', req.body);
+        const provider = provider_factory_1.ProviderFactory.getProvider('CLOCKIFY', prisma);
+        try {
+            const result = await provider.sync({
+                forceRefresh: force,
+                customStart: startDate,
+                customEnd: endDate
+            });
+            return result;
+        }
+        catch (error) {
+            req.log.error(error);
+            return reply.code(500).send({ error: error.message });
+        }
+    });
     // Eintrag löschen
     protectedRoutes.delete('/entries/:id', async (req, reply) => {
         const { id } = req.params;
@@ -224,6 +280,22 @@ app.register(async (protectedRoutes) => {
         catch (error) {
             req.log.error(error);
             return reply.code(500).send({ error: 'Could not delete entry' });
+        }
+    });
+    // Mehrere Einträge löschen (Bulk Delete)
+    protectedRoutes.post('/entries/bulk-delete', async (req, reply) => {
+        const { ids } = req.body;
+        if (!ids?.length)
+            return reply.code(400).send({ error: 'No IDs provided' });
+        try {
+            const result = await prisma.timeEntry.deleteMany({
+                where: { id: { in: ids } },
+            });
+            return { success: true, deleted: result.count };
+        }
+        catch (error) {
+            req.log.error(error);
+            return reply.code(500).send({ error: 'Could not delete entries' });
         }
     });
     // Eintrag aktualisieren
@@ -307,9 +379,10 @@ app.register(async (protectedRoutes) => {
 }, { prefix: '/api' });
 // Start Server
 const start = async () => {
+    const port = Number(process.env.PORT) || 3000;
     try {
-        await app.listen({ port: 3000, host: '0.0.0.0' });
-        console.log('Server running at http://localhost:3000');
+        await app.listen({ port, host: '0.0.0.0' });
+        console.log(`Server running at http://localhost:${port}`);
     }
     catch (err) {
         app.log.error(err);
