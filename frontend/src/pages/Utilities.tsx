@@ -65,6 +65,16 @@ export function Utilities({ onBack, toggleSidebar }: UtilitiesProps) {
   const [showPricesModal, setShowPricesModal] = useState(false);
   // Bumped whenever readings or prices change so summary + chart refetch
   const [dataVersion, setDataVersion] = useState(0);
+  // Chart + insights scope: selected Wohnung only (default) or all Wohnungen
+  // incl. former ones — the latter shows the full multi-year history
+  const [allProperties, setAllProperties] = useState(
+    () => localStorage.getItem('verbrauch.allProperties') === 'true'
+  );
+
+  const toggleAllProperties = (checked: boolean) => {
+    setAllProperties(checked);
+    localStorage.setItem('verbrauch.allProperties', String(checked));
+  };
 
   // API functions
   const fetchProperties = async () => {
@@ -365,16 +375,37 @@ export function Utilities({ onBack, toggleSidebar }: UtilitiesProps) {
                 </div>
               )}
 
-              {/* Insights + consumption chart (year-over-year, scoped to selected property) */}
+              {/* Insights + consumption chart (year-over-year, scoped to selected
+                  property or — via toggle — to all properties for full history) */}
               {meters.filter(m => m.type === activeTab && !m.deletedAt).length > 0 && (
                 <div className="p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700">
+                  {properties.length > 1 && (
+                    <div className="flex justify-end mb-3">
+                      <label
+                        className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer"
+                        title="Verbrauch aller Wohnungen (auch früherer) in Kennzahlen und Diagramm anzeigen"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={allProperties}
+                          onChange={(e) => toggleAllProperties(e.target.checked)}
+                          className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span className="whitespace-nowrap">Alle Wohnungen</span>
+                      </label>
+                    </div>
+                  )}
                   <ConsumptionSummary
                     meterType={activeTab}
-                    propertyId={selectedPropertyId}
+                    propertyId={allProperties ? null : selectedPropertyId}
                     refreshKey={dataVersion}
                     onManagePrices={selectedMeter ? () => setShowPricesModal(true) : undefined}
                   />
-                  <ConsumptionChart meterType={activeTab} propertyId={selectedPropertyId} refreshKey={dataVersion} />
+                  <ConsumptionChart
+                    meterType={activeTab}
+                    propertyId={allProperties ? null : selectedPropertyId}
+                    refreshKey={dataVersion}
+                  />
                 </div>
               )}
 
