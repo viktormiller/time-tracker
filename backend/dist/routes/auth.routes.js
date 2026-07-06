@@ -6,6 +6,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.default = default_1;
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const secrets_1 = require("../utils/secrets");
+// Compared against when the username is wrong, so unknown-user and
+// wrong-password attempts take the same time (no username timing oracle)
+const DUMMY_HASH = bcrypt_1.default.hashSync('timing-equalizer', 12);
 /**
  * Authentication routes
  * Provides login, refresh, and logout endpoints
@@ -31,6 +34,7 @@ async function default_1(fastify) {
         // Validate username matches admin user
         const adminUser = process.env.ADMIN_USER || 'admin';
         if (username !== adminUser) {
+            await bcrypt_1.default.compare(password, DUMMY_HASH); // equalize timing
             return reply.code(401).send({ error: 'Invalid credentials' });
         }
         // Load admin password hash
@@ -150,6 +154,7 @@ async function default_1(fastify) {
         // Validate username matches admin user
         const adminUser = process.env.ADMIN_USER || 'admin';
         if (username !== adminUser) {
+            await bcrypt_1.default.compare(password, DUMMY_HASH); // equalize timing
             return reply.code(401).send({ error: 'Invalid credentials' });
         }
         // Load admin password hash

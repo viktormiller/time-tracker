@@ -10,6 +10,10 @@ declare module '@fastify/secure-session' {
   }
 }
 
+// Compared against when the username is wrong, so unknown-user and
+// wrong-password attempts take the same time (no username timing oracle)
+const DUMMY_HASH = bcrypt.hashSync('timing-equalizer', 12);
+
 /**
  * Authentication routes
  * Provides login, refresh, and logout endpoints
@@ -42,6 +46,7 @@ export default async function (fastify: FastifyInstance) {
     // Validate username matches admin user
     const adminUser = process.env.ADMIN_USER || 'admin';
     if (username !== adminUser) {
+      await bcrypt.compare(password, DUMMY_HASH); // equalize timing
       return reply.code(401).send({ error: 'Invalid credentials' });
     }
 
@@ -204,6 +209,7 @@ export default async function (fastify: FastifyInstance) {
       // Validate username matches admin user
       const adminUser = process.env.ADMIN_USER || 'admin';
       if (username !== adminUser) {
+        await bcrypt.compare(password, DUMMY_HASH); // equalize timing
         return reply.code(401).send({ error: 'Invalid credentials' });
       }
 

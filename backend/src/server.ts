@@ -20,7 +20,9 @@ import { createTimeEntrySchema, calculateDuration, generateManualExternalId } fr
 import { fromZonedTime } from 'date-fns-tz';
 
 const prisma = new PrismaClient();
-const app = Fastify({ logger: true });
+// trustProxy: rate limiting keys on the real client IP from X-Forwarded-For
+// (set by nginx) instead of lumping all visitors into the proxy's bucket
+const app = Fastify({ logger: true, trustProxy: true });
 
 // Register plugins
 app.register(cors, {

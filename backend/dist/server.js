@@ -23,7 +23,9 @@ const utility_routes_1 = require("./routes/utility.routes");
 const time_entry_schema_1 = require("./schemas/time-entry.schema");
 const date_fns_tz_1 = require("date-fns-tz");
 const prisma = new client_1.PrismaClient();
-const app = (0, fastify_1.default)({ logger: true });
+// trustProxy: rate limiting keys on the real client IP from X-Forwarded-For
+// (set by nginx) instead of lumping all visitors into the proxy's bucket
+const app = (0, fastify_1.default)({ logger: true, trustProxy: true });
 // Register plugins
 app.register(cors_1.default, {
     origin: process.env.FRONTEND_URL || 'http://localhost:5173',
