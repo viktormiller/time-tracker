@@ -19,6 +19,7 @@ services:
       - toggl_api_token
       - tempo_api_token
       - clockify_api_token
+      - jira_api_token
     # Override to read db_password from secret at runtime
     command: >
       sh -c "
@@ -45,3 +46,5 @@ secrets:
     file: ./docker/secrets/tempo_api_token
   clockify_api_token:
     file: ./docker/secrets/clockify_api_token
+  jira_api_token:
+    file: ./docker/secrets/jira_api_token

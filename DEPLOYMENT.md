@@ -76,6 +76,27 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec backend cat
 
 Then hit the Sync button in the UI; it should return the entry count instead of the *not configured* toast.
 
+## Jira issue-key resolution (Tempo)
+
+The Tempo v4 API only returns numeric issue IDs, so the backend resolves them to
+issue keys / summaries / project names via the Jira REST API (cached in the
+`JiraIssueCache` table — one Jira call per issue, ever). Without these
+credentials Tempo entries fall back to `Issue #<id>` and the sync toast says so.
+
+Three values are needed:
+
+1. **`JIRA_BASE_URL`** (e.g. `https://schubwerk.atlassian.net`) and **`JIRA_EMAIL`**
+   (the Atlassian account email) — plain env vars, not secrets. Local dev:
+   `backend/.env`. Production: the `.env` file next to the compose files on the
+   deploy host (compose v2 reads it automatically and passes both through).
+2. **`jira_api_token`** — an Atlassian API token, created at
+   <https://id.atlassian.com/manage-profile/security/api-tokens>. Wire it exactly
+   like a provider token per the playbook above (`docker/secrets/jira_api_token`,
+   mode 644, mount + declaration in `docker-compose.prod.yml` — already committed).
+
+After recreating the backend, run a Tempo sync: new entries get real keys, and a
+one-time backfill rewrites all historic `Issue #<id>` entries in the database.
+
 ## Common pitfalls
 
 - **644 vs 600.** Docker mirrors the host file's mode into `/run/secrets/`. Permissions narrower than 644 lock out the non-root container user.

@@ -27,6 +27,17 @@ model TimeEntry {
   @@index([date])
 }
 
+// Cache for resolved Jira issue metadata. The Tempo v4 API only returns
+// numeric issue IDs, so keys/summaries are fetched once from the Jira REST
+// API and cached here (they rarely change).
+model JiraIssueCache {
+  issueId     String   @id
+  issueKey    String
+  summary     String?
+  projectName String?
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+}
+
 model ProjectEstimate {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   clientName     String
