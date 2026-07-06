@@ -107,11 +107,19 @@ app.register(async (protectedRoutes) => {
         });
         return { providers: statuses };
     });
-    // 1. Get Aggregated Stats
+    // 1. Get Aggregated Stats (optionally limited to a date range)
     protectedRoutes.get('/stats', async (request, reply) => {
-        // Simple aggregation: Group by date
-        // In a real app, you would add ?from=...&to=... query params here
+        const { from, to } = request.query;
+        const where = {};
+        if (from || to) {
+            where.date = {};
+            if (from)
+                where.date.gte = new Date(`${from}T00:00:00.000Z`);
+            if (to)
+                where.date.lte = new Date(`${to}T23:59:59.999Z`);
+        }
         const entries = await prisma.timeEntry.findMany({
+            where,
             orderBy: { date: 'desc' }
         });
         return entries;

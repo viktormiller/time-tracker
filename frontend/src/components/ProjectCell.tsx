@@ -16,13 +16,13 @@ const JIRA_KEY_REGEX = /^([A-Z][A-Z0-9]+-\d+)/;
 export function ProjectCell({ project, source, jiraBaseUrl }: Props) {
   // Only process Tempo entries for Jira links
   if (source !== 'TEMPO' || !jiraBaseUrl || !project) {
-    return <span className="font-medium text-gray-800">{project || '-'}</span>;
+    return <span className="font-medium text-gray-800 dark:text-gray-200">{project || '-'}</span>;
   }
 
   // Extract issue key from project string
   const match = project.match(JIRA_KEY_REGEX);
   if (!match) {
-    return <span className="font-medium text-gray-800">{project}</span>;
+    return <span className="font-medium text-gray-800 dark:text-gray-200">{project}</span>;
   }
 
   const issueKey = match[1];
@@ -37,13 +37,13 @@ export function ProjectCell({ project, source, jiraBaseUrl }: Props) {
         href={issueUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+        className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline inline-flex items-center gap-1"
         title={`Open ${issueKey} in Jira`}
       >
         {issueKey}
         <ExternalLink size={12} className="opacity-50" />
       </a>
-      {remainingText && <span className="text-gray-600"> - {remainingText}</span>}
+      {remainingText && <span className="text-gray-600 dark:text-gray-400"> - {remainingText}</span>}
     </span>
   );
 }

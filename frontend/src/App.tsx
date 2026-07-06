@@ -290,11 +290,29 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const syncAll = async () => {
       setSyncing(true); setSyncDropdownOpen(false);
       try {
-          const labels = ['Toggl', 'Tempo', 'Clockify'];
-          const results = await Promise.allSettled([_syncToggl(), _syncTempo(), _syncClockify()]);
+          // Only sync providers that are actually configured — otherwise every
+          // "Sync All" ends in error toasts for unused services
+          let configured = ['TOGGL', 'TEMPO', 'CLOCKIFY'];
+          try {
+              const status = await axios.get<{ providers: { name: string; configured: boolean }[] }>(`${API_URL}/providers/status`);
+              const active = status.data.providers.filter(p => p.configured).map(p => p.name);
+              if (active.length > 0) configured = active;
+          } catch { /* status check failed — fall back to trying all */ }
+
+          const jobs: { label: string; run: () => Promise<void> }[] = [];
+          if (configured.includes('TOGGL')) jobs.push({ label: 'Toggl', run: _syncToggl });
+          if (configured.includes('TEMPO')) jobs.push({ label: 'Tempo', run: _syncTempo });
+          if (configured.includes('CLOCKIFY')) jobs.push({ label: 'Clockify', run: _syncClockify });
+
+          if (jobs.length === 0) {
+              toast.warning('Keine Sync-Provider konfiguriert.');
+              return;
+          }
+
+          const results = await Promise.allSettled(jobs.map(j => j.run()));
           results.forEach((r, i) => {
               if (r.status === 'rejected') {
-                  const label = labels[i];
+                  const label = jobs[i].label;
                   const err = r.reason;
                   if (axios.isAxiosError(err) && err.response?.data?.error) toast.error(`${label} Sync: ${err.response.data.error}`);
                   else toast.error(`${label} Sync fehlgeschlagen.`);
