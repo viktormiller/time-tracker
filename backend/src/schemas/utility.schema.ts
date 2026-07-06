@@ -40,6 +40,11 @@ export const updateReadingSchema = z.object({
   notes: z.string().max(500).nullable().optional(),
 });
 
+export const createPriceSchema = z.object({
+  pricePerUnit: z.number().positive('Price must be positive'),
+  validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD format'),
+});
+
 export type CreatePropertyInput = z.infer<typeof createPropertySchema>;
 export type UpdatePropertyInput = z.infer<typeof updatePropertySchema>;
 export type CreateMeterInput = z.infer<typeof createMeterSchema>;

@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { ArrowLeft, Menu, Plus, MoreVertical, Edit2, Archive, Upload } from 'lucide-react';
+import { ArrowLeft, Menu, Plus, MoreVertical, Edit2, Archive, Upload, Euro } from 'lucide-react';
 import { EmptyState } from '../components/utilities/EmptyState';
 import { MeterTabs } from '../components/utilities/MeterTabs';
 import { MeterForm } from '../components/utilities/MeterForm';
 import { ReadingForm } from '../components/utilities/ReadingForm';
 import { ReadingsTable } from '../components/utilities/ReadingsTable';
 import { ConsumptionChart } from '../components/utilities/ConsumptionChart';
+import { ConsumptionSummary } from '../components/utilities/ConsumptionSummary';
+import { MeterPricesModal } from '../components/utilities/MeterPricesModal';
 import { PropertySelector, type Property } from '../components/utilities/PropertySelector';
 import { PropertyForm } from '../components/utilities/PropertyForm';
 import { BulkImportForm } from '../components/utilities/BulkImportForm';
@@ -60,6 +62,9 @@ export function Utilities({ onBack, toggleSidebar }: UtilitiesProps) {
   const [openMeterMenuId, setOpenMeterMenuId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [showBulkImport, setShowBulkImport] = useState(false);
+  const [showPricesModal, setShowPricesModal] = useState(false);
+  // Bumped whenever readings or prices change so summary + chart refetch
+  const [dataVersion, setDataVersion] = useState(0);
 
   // API functions
   const fetchProperties = async () => {
@@ -145,6 +150,7 @@ export function Utilities({ onBack, toggleSidebar }: UtilitiesProps) {
     try {
       await axios.delete(`/api/utilities/readings/${id}`);
       toast.success('Ablesung gelöscht');
+      setDataVersion(v => v + 1);
       if (selectedMeterId) {
         await fetchReadings(selectedMeterId);
       }
@@ -189,11 +195,11 @@ export function Utilities({ onBack, toggleSidebar }: UtilitiesProps) {
   const selectedMeter = meters.find(m => m.id === selectedMeterId);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-6 font-sans">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 p-4 sm:p-6 font-sans">
+      <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4 min-w-0">
             {toggleSidebar && (
               <button onClick={toggleSidebar} className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition" title="Toggle sidebar">
                 <Menu size={20} />
@@ -217,7 +223,7 @@ export function Utilities({ onBack, toggleSidebar }: UtilitiesProps) {
               />
             )}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {meters.length > 0 && (
               <label className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition cursor-pointer">
                 <input
@@ -226,13 +232,13 @@ export function Utilities({ onBack, toggleSidebar }: UtilitiesProps) {
                   onChange={(e) => setShowArchived(e.target.checked)}
                   className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
                 />
-                Archivierte anzeigen
+                <span className="whitespace-nowrap">Archivierte anzeigen</span>
               </label>
             )}
             {meters.length > 0 && (
               <button
                 onClick={() => setShowMeterForm(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600 text-white rounded-lg transition font-medium shadow-sm"
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600 text-white rounded-lg transition font-medium shadow-sm whitespace-nowrap"
               >
                 <Plus size={20} />
                 Neuer Zähler
@@ -256,9 +262,9 @@ export function Utilities({ onBack, toggleSidebar }: UtilitiesProps) {
 
               {/* Meter action bar */}
               {selectedMeter && (
-                <div className="border-b border-gray-200 dark:border-gray-700 p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <h3 className={`text-lg font-semibold ${selectedMeter.deletedAt ? 'text-gray-500 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>
+                <div className="border-b border-gray-200 dark:border-gray-700 p-4 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <h3 className={`text-lg font-semibold truncate ${selectedMeter.deletedAt ? 'text-gray-500 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>
                       {selectedMeter.name}
                     </h3>
                     {selectedMeter.deletedAt && (
@@ -299,6 +305,16 @@ export function Utilities({ onBack, toggleSidebar }: UtilitiesProps) {
                                 Bearbeiten
                               </button>
                             )}
+                            <button
+                              onClick={() => {
+                                setShowPricesModal(true);
+                                setOpenMeterMenuId(null);
+                              }}
+                              className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
+                            >
+                              <Euro size={16} />
+                              Preise
+                            </button>
                             {selectedMeter.deletedAt ? (
                               <button
                                 onClick={() => {
@@ -335,11 +351,11 @@ export function Utilities({ onBack, toggleSidebar }: UtilitiesProps) {
                         title="Ablesungen importieren"
                       >
                         <Upload size={18} />
-                        Import
+                        <span className="hidden sm:inline">Import</span>
                       </button>
                       <button
                         onClick={() => setShowReadingForm(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600 text-white rounded-lg transition font-medium shadow-sm"
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-700 dark:hover:bg-indigo-600 text-white rounded-lg transition font-medium shadow-sm whitespace-nowrap"
                       >
                         <Plus size={18} />
                         Ablesung hinzufügen
@@ -349,15 +365,21 @@ export function Utilities({ onBack, toggleSidebar }: UtilitiesProps) {
                 </div>
               )}
 
-              {/* Consumption chart (year-over-year, cross-property) */}
+              {/* Insights + consumption chart (year-over-year, scoped to selected property) */}
               {meters.filter(m => m.type === activeTab && !m.deletedAt).length > 0 && (
-                <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                  <ConsumptionChart meterType={activeTab} />
+                <div className="p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700">
+                  <ConsumptionSummary
+                    meterType={activeTab}
+                    propertyId={selectedPropertyId}
+                    refreshKey={dataVersion}
+                    onManagePrices={selectedMeter ? () => setShowPricesModal(true) : undefined}
+                  />
+                  <ConsumptionChart meterType={activeTab} propertyId={selectedPropertyId} refreshKey={dataVersion} />
                 </div>
               )}
 
               {/* Readings table */}
-              <div className="p-6">
+              <div className="p-4 sm:p-6">
                 {selectedMeter ? (
                   <ReadingsTable
                     readings={readings}
@@ -414,10 +436,21 @@ export function Utilities({ onBack, toggleSidebar }: UtilitiesProps) {
           meterName={selectedMeter.name}
           onClose={() => setShowBulkImport(false)}
           onSave={() => {
+            setDataVersion(v => v + 1);
             if (selectedMeterId) {
               fetchReadings(selectedMeterId);
             }
           }}
+        />
+      )}
+
+      {showPricesModal && selectedMeter && (
+        <MeterPricesModal
+          meterId={selectedMeter.id}
+          meterName={selectedMeter.name}
+          unit={selectedMeter.unit}
+          onClose={() => setShowPricesModal(false)}
+          onChanged={() => setDataVersion(v => v + 1)}
         />
       )}
 
@@ -431,6 +464,7 @@ export function Utilities({ onBack, toggleSidebar }: UtilitiesProps) {
             setEditingReading(null);
           }}
           onSave={() => {
+            setDataVersion(v => v + 1);
             if (selectedMeterId) {
               fetchReadings(selectedMeterId);
             }

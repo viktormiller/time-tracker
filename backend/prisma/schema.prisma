@@ -81,10 +81,24 @@ model Meter {
   updatedAt  DateTime        @updatedAt @db.Timestamptz(6)
   property   Property        @relation(fields: [propertyId], references: [id])
   readings   MeterReading[]
+  prices     MeterPrice[]
 
   @@index([type])
   @@index([deletedAt])
   @@index([propertyId])
+}
+
+// Energy price per unit (EUR/kWh or EUR/m³) with a valid-from date.
+// The applicable price for a day is the row with the latest validFrom <= day.
+model MeterPrice {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  meterId      String   @db.Uuid
+  pricePerUnit Float
+  validFrom    DateTime @db.Date
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  meter        Meter    @relation(fields: [meterId], references: [id], onDelete: Cascade)
+
+  @@unique([meterId, validFrom])
 }
 
 model MeterReading {

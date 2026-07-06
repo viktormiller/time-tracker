@@ -17,6 +17,8 @@ interface ConsumptionResponse {
 
 interface ConsumptionChartProps {
   meterType: string;
+  propertyId: string | null;
+  refreshKey?: number;
 }
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mrz', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
@@ -28,14 +30,16 @@ const TYPE_LABELS: Record<string, string> = {
   WASSER_WARM: 'Warmwasserverbrauch',
 };
 
-export function ConsumptionChart({ meterType }: ConsumptionChartProps) {
+export function ConsumptionChart({ meterType, propertyId, refreshKey }: ConsumptionChartProps) {
   const [data, setData] = useState<MonthlyEntry[]>([]);
   const [unit, setUnit] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    axios.get<ConsumptionResponse>(`/api/utilities/consumption/monthly?type=${meterType}`)
+    const params = new URLSearchParams({ type: meterType });
+    if (propertyId) params.set('propertyId', propertyId);
+    axios.get<ConsumptionResponse>(`/api/utilities/consumption/monthly?${params.toString()}`)
       .then((res) => {
         setData(res.data.data);
         setUnit(res.data.unit);
@@ -44,7 +48,7 @@ export function ConsumptionChart({ meterType }: ConsumptionChartProps) {
         setData([]);
       })
       .finally(() => setLoading(false));
-  }, [meterType]);
+  }, [meterType, propertyId, refreshKey]);
 
   const { chartData, years } = useMemo(() => {
     if (data.length === 0) return { chartData: [], years: [] };
@@ -90,7 +94,9 @@ export function ConsumptionChart({ meterType }: ConsumptionChartProps) {
       <h4 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3">
         {title}
       </h4>
-      <div className="h-[280px] w-full">
+      {/* On phones the 12-month grouped chart scrolls horizontally instead of squeezing */}
+      <div className="overflow-x-auto">
+      <div className="h-[280px] min-w-[560px] md:min-w-0 md:w-full">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? '#404040' : '#f3f4f6'} />
@@ -137,6 +143,7 @@ export function ConsumptionChart({ meterType }: ConsumptionChartProps) {
             ))}
           </BarChart>
         </ResponsiveContainer>
+      </div>
       </div>
     </div>
   );

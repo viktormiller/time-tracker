@@ -10,7 +10,15 @@ import {
   updateMeterSchema,
   createReadingSchema,
   updateReadingSchema,
+  createPriceSchema,
 } from '../schemas/utility.schema';
+import {
+  proRateMonthly,
+  proRateDaily,
+  priceAt,
+  shiftDayKey,
+  CO2_FACTORS_KG_PER_UNIT,
+} from '../utils/consumption';
 
 const prisma = new PrismaClient();
 
@@ -209,16 +217,18 @@ export async function utilityRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // GET /api/utilities/consumption/monthly - Year-over-year monthly consumption across all properties
+  // GET /api/utilities/consumption/monthly - Year-over-year monthly consumption,
+  // pro-rated per day and optionally scoped to a property. Archived meters are
+  // included: their readings are consumption history, not meter lifecycle.
   fastify.get('/utilities/consumption/monthly', async (request, reply) => {
     try {
-      const { type } = request.query as { type?: string };
+      const { type, propertyId } = request.query as { type?: string; propertyId?: string };
       if (!type || !['STROM', 'GAS', 'WASSER_WARM'].includes(type)) {
         return reply.code(400).send({ error: 'type query parameter required (STROM, GAS, WASSER_WARM)' });
       }
 
       const meters = await prisma.meter.findMany({
-        where: { type, deletedAt: null },
+        where: { type, ...(propertyId ? { propertyId } : {}) },
         include: { readings: { orderBy: { readingDate: 'asc' } } },
       });
 
@@ -226,14 +236,7 @@ export async function utilityRoutes(fastify: FastifyInstance) {
       const monthlyMap = new Map<string, number>();
 
       for (const meter of meters) {
-        for (let i = 1; i < meter.readings.length; i++) {
-          const prev = meter.readings[i - 1];
-          const curr = meter.readings[i];
-          const consumption = curr.value - prev.value;
-          const d = new Date(prev.readingDate);
-          const key = `${d.getFullYear()}-${d.getMonth()}`;
-          monthlyMap.set(key, (monthlyMap.get(key) ?? 0) + consumption);
-        }
+        proRateMonthly(meter.readings, monthlyMap);
       }
 
       const data = Array.from(monthlyMap.entries()).map(([key, consumption]) => {
@@ -245,6 +248,144 @@ export async function utilityRoutes(fastify: FastifyInstance) {
     } catch (error) {
       fastify.log.error(error);
       reply.status(500).send({ error: 'Failed to fetch monthly consumption' });
+    }
+  });
+
+  // GET /api/utilities/consumption/summary - Savings insights per meter type:
+  // current year vs. same period last year, rolling 12 months vs. the 12
+  // months before, each with cost (from per-meter prices) and CO₂ estimates.
+  fastify.get('/utilities/consumption/summary', async (request, reply) => {
+    try {
+      const { type, propertyId } = request.query as { type?: string; propertyId?: string };
+      if (!type || !['STROM', 'GAS', 'WASSER_WARM'].includes(type)) {
+        return reply.code(400).send({ error: 'type query parameter required (STROM, GAS, WASSER_WARM)' });
+      }
+
+      const meters = await prisma.meter.findMany({
+        where: { type, ...(propertyId ? { propertyId } : {}) },
+        include: {
+          readings: { orderBy: { readingDate: 'asc' } },
+          prices: { orderBy: { validFrom: 'asc' } },
+        },
+      });
+
+      // Merge all meters into one day → {consumption, cost} map; cost only
+      // for days covered by a price (prices are per meter)
+      const days = new Map<string, { consumption: number; cost: number; pricedConsumption: number }>();
+      for (const meter of meters) {
+        const daily = proRateDaily(meter.readings);
+        for (const [day, consumption] of daily) {
+          const price = priceAt(meter.prices, day);
+          const agg = days.get(day) ?? { consumption: 0, cost: 0, pricedConsumption: 0 };
+          agg.consumption += consumption;
+          if (price !== null) {
+            agg.cost += consumption * price;
+            agg.pricedConsumption += consumption;
+          }
+          days.set(day, agg);
+        }
+      }
+
+      const co2Factor = CO2_FACTORS_KG_PER_UNIT[type] ?? null;
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+
+      const sumPeriod = (from: string, to: string) => {
+        let consumption = 0;
+        let cost = 0;
+        let pricedConsumption = 0;
+        for (const [day, agg] of days) {
+          if (day >= from && day <= to) {
+            consumption += agg.consumption;
+            cost += agg.cost;
+            pricedConsumption += agg.pricedConsumption;
+          }
+        }
+        return {
+          consumption: round2(consumption),
+          cost: pricedConsumption > 0 ? round2(cost) : null,
+          // Lets the UI flag costs that cover only part of the consumption
+          // (e.g. a second meter without prices)
+          pricedConsumption: round2(pricedConsumption),
+          co2Kg: co2Factor !== null ? round2(consumption * co2Factor) : null,
+        };
+      };
+
+      const today = new Date().toISOString().split('T')[0];
+      const year = Number(today.slice(0, 4));
+      const monthDay = today.slice(5);
+
+      const unitMap: Record<string, string> = { STROM: 'kWh', GAS: 'm³', WASSER_WARM: 'm³' };
+
+      return {
+        unit: unitMap[type] || 'kWh',
+        hasPrices: meters.some(m => m.prices.length > 0),
+        asOf: today,
+        periods: {
+          currentYear: sumPeriod(`${year}-01-01`, today),
+          previousYearSamePeriod: sumPeriod(`${year - 1}-01-01`, `${year - 1}-${monthDay}`),
+          previousYearTotal: sumPeriod(`${year - 1}-01-01`, `${year - 1}-12-31`),
+          rolling12m: sumPeriod(shiftDayKey(today, -364), today),
+          priorRolling12m: sumPeriod(shiftDayKey(today, -729), shiftDayKey(today, -365)),
+        },
+      };
+    } catch (error) {
+      fastify.log.error(error);
+      reply.status(500).send({ error: 'Failed to fetch consumption summary' });
+    }
+  });
+
+  // === Meter price CRUD (per meter, with valid-from dates) ===
+
+  // GET /api/utilities/meters/:meterId/prices - List prices, newest first
+  fastify.get('/utilities/meters/:meterId/prices', async (request, reply) => {
+    try {
+      const { meterId } = request.params as { meterId: string };
+      const prices = await prisma.meterPrice.findMany({
+        where: { meterId },
+        orderBy: { validFrom: 'desc' },
+      });
+      return prices;
+    } catch (error) {
+      fastify.log.error(error);
+      reply.status(500).send({ error: 'Failed to fetch prices' });
+    }
+  });
+
+  // POST /api/utilities/meters/:meterId/prices - Add a price
+  fastify.post('/utilities/meters/:meterId/prices', async (request, reply) => {
+    try {
+      const { meterId } = request.params as { meterId: string };
+      const data = createPriceSchema.parse(request.body);
+
+      const price = await prisma.meterPrice.create({
+        data: {
+          meterId,
+          pricePerUnit: data.pricePerUnit,
+          validFrom: new Date(data.validFrom),
+        },
+      });
+      reply.status(201).send(price);
+    } catch (error: any) {
+      if (error instanceof Error && error.name === 'ZodError') {
+        reply.status(400).send({ error: 'Validation error', details: error });
+      } else if (error.code === 'P2002') {
+        reply.status(400).send({ error: 'Für dieses Datum existiert bereits ein Preis.' });
+      } else {
+        fastify.log.error(error);
+        reply.status(500).send({ error: 'Failed to create price' });
+      }
+    }
+  });
+
+  // DELETE /api/utilities/prices/:id - Delete a price
+  fastify.delete('/utilities/prices/:id', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      await prisma.meterPrice.delete({ where: { id } });
+      reply.status(204).send();
+    } catch (error) {
+      fastify.log.error(error);
+      reply.status(500).send({ error: 'Failed to delete price' });
     }
   });
 
