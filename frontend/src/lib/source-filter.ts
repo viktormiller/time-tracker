@@ -1,21 +1,36 @@
-const SOURCE_FILTER_KEY = 'user_source_filter';
+const EXCLUDED_SOURCES_KEY = 'user_source_filter_excluded';
+const LEGACY_INCLUDE_KEY = 'user_source_filter';
 const KNOWN_SOURCES = ['TOGGL', 'TEMPO', 'CLOCKIFY', 'MANUAL'];
 
-export function getSourceFilter(): string[] {
-  if (typeof window === 'undefined') return [];
-
-  const stored = localStorage.getItem(SOURCE_FILTER_KEY);
-  if (!stored) return [];
-
+function parseSources(raw: string | null): string[] | null {
+  if (!raw) return null;
   try {
-    const parsed = JSON.parse(stored);
-    if (!Array.isArray(parsed)) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
     return parsed.filter((s): s is string => typeof s === 'string' && KNOWN_SOURCES.includes(s));
   } catch {
-    return [];
+    return null;
   }
 }
 
-export function setSourceFilter(sources: string[]): void {
-  localStorage.setItem(SOURCE_FILTER_KEY, JSON.stringify(sources));
+// The filter stores which sources are HIDDEN; empty = everything visible.
+export function getExcludedSources(): string[] {
+  if (typeof window === 'undefined') return [];
+
+  const excluded = parseSources(localStorage.getItem(EXCLUDED_SOURCES_KEY));
+  if (excluded !== null) return excluded;
+
+  // Migrate the legacy include-list (empty = all visible) to exclusions
+  const included = parseSources(localStorage.getItem(LEGACY_INCLUDE_KEY));
+  if (included !== null && included.length > 0) {
+    const migrated = KNOWN_SOURCES.filter(s => !included.includes(s));
+    setExcludedSources(migrated);
+    localStorage.removeItem(LEGACY_INCLUDE_KEY);
+    return migrated;
+  }
+  return [];
+}
+
+export function setExcludedSources(sources: string[]): void {
+  localStorage.setItem(EXCLUDED_SOURCES_KEY, JSON.stringify(sources));
 }

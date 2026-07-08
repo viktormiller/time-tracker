@@ -28,7 +28,7 @@ import LoginForm from './components/LoginForm';
 import { TimezoneSelector } from './components/TimezoneSelector';
 import { ProjectCell } from './components/ProjectCell';
 import { getTimezone, setTimezone } from './lib/timezone';
-import { getSourceFilter, setSourceFilter } from './lib/source-filter';
+import { getExcludedSources, setExcludedSources } from './lib/source-filter';
 import { SourceFilterToggle } from './components/SourceFilterToggle';
 import { ProjectFilter } from './components/ProjectFilter';
 import { getHourLimits, type HourLimits } from './lib/hour-limits';
@@ -148,7 +148,8 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const [exportAction, setExportAction] = useState<'csv' | 'pdf'>('csv');
   
   // Filter & UI States
-  const [filterSources, setFilterSources] = useState<string[]>(getSourceFilter());
+  // Sources hidden via the filter chips; empty = all visible
+  const [excludedSources, setExcludedSourcesState] = useState<string[]>(getExcludedSources());
   const [filterProject, setFilterProject] = useState<string>('ALL');
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'date', direction: 'desc' });
@@ -323,7 +324,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   };
 
   useEffect(() => { fetchData(); }, []);
-  useEffect(() => { setSelectedDay(null); }, [filterSources, filterProject, dateRange]);
+  useEffect(() => { setSelectedDay(null); }, [excludedSources, filterProject, dateRange]);
 
   useEffect(() => {
       const handler = (e: MouseEvent) => {
@@ -390,16 +391,22 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   };
 
   // --- LOGIC: FILTERING ---
+  // Source + project filter without the date range — the KPI cards (heute,
+  // Woche, Vergleichs-Badges) have their own time windows but must still
+  // respect the source/project selection
+  const scopedEntries = useMemo(() => {
+    return entries.filter(entry =>
+      !excludedSources.includes(entry.source) &&
+      (filterProject === 'ALL' || entry.project === filterProject)
+    );
+  }, [entries, excludedSources, filterProject]);
+
   const filteredEntries = useMemo(() => {
-    return entries.filter(entry => {
-      const matchesSource = filterSources.length === 0 || filterSources.includes(entry.source);
-      const matchesProject = filterProject === 'ALL' || entry.project === filterProject;
-      const entryDate = parseISO(entry.date);
-      let matchesDate = true;
-      if (datePreset !== 'ALL') matchesDate = isWithinInterval(entryDate, { start: dateRange.start, end: dateRange.end });
-      return matchesSource && matchesProject && matchesDate;
+    return scopedEntries.filter(entry => {
+      if (datePreset === 'ALL') return true;
+      return isWithinInterval(parseISO(entry.date), { start: dateRange.start, end: dateRange.end });
     });
-  }, [entries, filterSources, filterProject, dateRange, datePreset]);
+  }, [scopedEntries, dateRange, datePreset]);
 
   // --- CHART LOGIC (MIT LÜCKEN FÜLLEN) ---
   const aggregatedData: DailyStats[] = useMemo(() => {
@@ -497,11 +504,11 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const tableTotalHours = useMemo(() => tableEntries.reduce((acc, curr) => acc + curr.duration, 0), [tableEntries]);
   const uniqueProjects = useMemo(() => Array.from(new Set(entries.map(e => e.project).filter(Boolean))).sort(), [entries]);
 
-  // Chart: only render bars for selected sources (empty filter = show all).
+  // Chart: only render bars for visible (non-excluded) sources.
   // Recharts derives legend + tooltip from rendered series, so this also
-  // scopes the legend and tooltip to the selected source(s).
+  // scopes the legend and tooltip to the visible source(s).
   const STACK_ORDER = ['TOGGL', 'TEMPO', 'CLOCKIFY', 'MANUAL'] as const;
-  const isSourceVisible = (s: string) => filterSources.length === 0 || filterSources.includes(s);
+  const isSourceVisible = (s: string) => !excludedSources.includes(s);
   const visibleSources = STACK_ORDER.filter(isSourceVisible);
   const barRadius = (s: typeof STACK_ORDER[number]): [number, number, number, number] => {
     const i = visibleSources.indexOf(s);
@@ -594,10 +601,10 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const hoursToday = useMemo(() => {
     const tz = getTimezone();
     const nowInTz = toZonedTime(new Date(), tz);
-    return entries
+    return scopedEntries
       .filter(e => isSameDay(toZonedTime(parseISO(e.date), tz), nowInTz))
       .reduce((acc, curr) => acc + curr.duration, 0);
-  }, [entries]);
+  }, [scopedEntries]);
 
   const hoursThisWeek = useMemo(() => {
     if (datePreset === 'WEEK' || datePreset === 'LAST_WEEK') {
@@ -606,20 +613,20 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
     const now = new Date();
     const weekStart = startOfWeek(now, { weekStartsOn: 1 });
     const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
-    return entries
+    return scopedEntries
       .filter(e => isWithinInterval(parseISO(e.date), { start: weekStart, end: weekEnd }))
       .reduce((acc, curr) => acc + curr.duration, 0);
-  }, [entries, datePreset, totalHoursFiltered]);
+  }, [scopedEntries, datePreset, totalHoursFiltered]);
 
   const dailyComparisonData = useMemo(() => {
     const tz = getTimezone();
     const nowInTz = toZonedTime(new Date(), tz);
     const fourWeeksAgo = subWeeks(nowInTz, 4);
-    const hours = entries
+    const hours = scopedEntries
       .filter(e => isSameDay(toZonedTime(parseISO(e.date), tz), fourWeeksAgo))
       .reduce((acc, curr) => acc + curr.duration, 0);
     return { hours, date: fourWeeksAgo };
-  }, [entries]);
+  }, [scopedEntries]);
 
   const dailyComparison = useMemo(() => {
     if (dailyComparisonData.hours === 0) return null;
@@ -639,14 +646,14 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
     const todayDow = (getDay(nowInTz) + 6) % 7; // 0=Mon, 6=Sun
     const compWeekStart = startOfWeek(fourWeeksAgo, { weekStartsOn: 1 });
     const compWeekEnd = endOfDay(addDays(compWeekStart, todayDow));
-    const hours = entries
+    const hours = scopedEntries
       .filter(e => {
         const d = toZonedTime(parseISO(e.date), tz);
         return isWithinInterval(d, { start: compWeekStart, end: compWeekEnd });
       })
       .reduce((acc, curr) => acc + curr.duration, 0);
     return { hours, start: compWeekStart, end: compWeekEnd };
-  }, [entries]);
+  }, [scopedEntries]);
 
   const weeklyComparison = useMemo(() => {
     if (weeklyComparisonData.hours === 0) return null;
@@ -1028,16 +1035,16 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
             <div className="h-8 w-px bg-gray-200 dark:bg-gray-700 mx-1 hidden md:block"></div>
 
             <SourceFilterToggle
-                value={filterSources}
-                onChange={(next) => { setFilterSources(next); setSourceFilter(next); }}
+                value={excludedSources}
+                onChange={(next) => { setExcludedSourcesState(next); setExcludedSources(next); }}
             />
             <ProjectFilter
                 value={filterProject}
                 onChange={setFilterProject}
                 projects={uniqueProjects}
             />
-            {(filterSources.length > 0 || filterProject !== 'ALL' || datePreset !== 'MONTH') && (
-                <button onClick={() => { setFilterSources([]); setSourceFilter([]); setFilterProject('ALL'); handlePresetChange('MONTH'); }} className="flex items-center gap-1 text-sm text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 ml-auto">
+            {(excludedSources.length > 0 || filterProject !== 'ALL' || datePreset !== 'MONTH') && (
+                <button onClick={() => { setExcludedSourcesState([]); setExcludedSources([]); setFilterProject('ALL'); handlePresetChange('MONTH'); }} className="flex items-center gap-1 text-sm text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 ml-auto">
                     <XCircle size={16} /> Reset
                 </button>
             )}

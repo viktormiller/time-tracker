@@ -1,6 +1,7 @@
 import { Filter } from 'lucide-react';
 
 interface SourceFilterToggleProps {
+  /** Sources that are hidden; empty = all visible */
   value: string[];
   onChange: (next: string[]) => void;
 }
@@ -37,30 +38,28 @@ export function SourceFilterToggle({ value, onChange }: SourceFilterToggleProps)
     onChange(value.includes(source) ? value.filter(v => v !== source) : [...value, source]);
   };
 
-  const allOff = value.length === 0;
-
   return (
     <div className="flex items-center gap-2">
       <Filter size={16} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
       <div className="inline-flex items-center gap-0.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 p-1 h-10">
         {SOURCES.map(({ value: v, label, activeClass, dotClass }) => {
-          const isActive = value.includes(v);
+          const isVisible = !value.includes(v);
           return (
             <button
               key={v}
               type="button"
               onClick={() => toggle(v)}
-              aria-pressed={isActive}
-              title={isActive ? `${label} ausgeblendet` : `Nur ${label}`}
+              aria-pressed={isVisible}
+              title={isVisible ? `${label} ausblenden` : `${label} einblenden`}
               className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 ${
-                isActive
+                isVisible
                   ? activeClass
-                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600/60'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600/60 line-through opacity-70'
               }`}
             >
               <span
                 className={`h-1.5 w-1.5 rounded-full transition-opacity ${dotClass} ${
-                  isActive || allOff ? 'opacity-100' : 'opacity-40'
+                  isVisible ? 'opacity-100' : 'opacity-40'
                 }`}
               />
               {label}
