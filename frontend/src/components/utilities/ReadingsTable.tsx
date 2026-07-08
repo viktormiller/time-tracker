@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { MoreVertical, Edit2, Trash2, ChevronUp, ChevronDown, Camera } from 'lucide-react';
 import { PhotoLightbox } from './PhotoLightbox';
@@ -28,8 +28,38 @@ type SortDirection = 'asc' | 'desc';
 export function ReadingsTable({ readings, loading, onEdit, onDelete }: ReadingsTableProps) {
   const [sortField, setSortField] = useState<SortField>('readingDate');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  // Menu uses viewport (fixed) coordinates so the table's overflow container
+  // can't clip it — for the last rows it flips upward instead
+  const [openMenu, setOpenMenu] = useState<{ id: string; top: number; left: number } | null>(null);
   const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null);
+
+  const MENU_WIDTH = 192; // w-48
+  const MENU_HEIGHT = 84; // 2 Einträge + Padding
+
+  const toggleMenu = (readingId: string, e: React.MouseEvent<HTMLButtonElement>) => {
+    if (openMenu?.id === readingId) {
+      setOpenMenu(null);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const openUp = rect.bottom + MENU_HEIGHT + 8 > window.innerHeight;
+    setOpenMenu({
+      id: readingId,
+      top: openUp ? rect.top - MENU_HEIGHT - 4 : rect.bottom + 4,
+      left: rect.right - MENU_WIDTH,
+    });
+  };
+
+  useEffect(() => {
+    if (!openMenu) return;
+    const close = () => setOpenMenu(null);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [openMenu]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -64,7 +94,7 @@ export function ReadingsTable({ readings, loading, onEdit, onDelete }: ReadingsT
     if (confirm('Diese Ablesung wirklich löschen?')) {
       onDelete(reading.id);
     }
-    setOpenMenuId(null);
+    setOpenMenu(null);
   };
 
   const SortIndicator = ({ field }: { field: SortField }) => {
@@ -298,25 +328,28 @@ export function ReadingsTable({ readings, loading, onEdit, onDelete }: ReadingsT
                   <Camera size={18} className="text-gray-300 dark:text-gray-600 mx-auto" />
                 )}
               </td>
-              <td className="px-4 py-4 text-right relative">
+              <td className="px-4 py-4 text-right">
                 <button
-                  onClick={() => setOpenMenuId(openMenuId === reading.id ? null : reading.id)}
+                  onClick={(e) => toggleMenu(reading.id, e)}
                   className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded transition"
                 >
                   <MoreVertical size={18} className="text-gray-600 dark:text-gray-400" />
                 </button>
 
-                {openMenuId === reading.id && (
+                {openMenu?.id === reading.id && (
                   <>
                     <div
                       className="fixed inset-0 z-10"
-                      onClick={() => setOpenMenuId(null)}
+                      onClick={() => setOpenMenu(null)}
                     />
-                    <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 py-1 z-20">
+                    <div
+                      className="fixed w-48 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 py-1 z-20"
+                      style={{ top: openMenu.top, left: openMenu.left }}
+                    >
                       <button
                         onClick={() => {
                           onEdit(reading);
-                          setOpenMenuId(null);
+                          setOpenMenu(null);
                         }}
                         className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2"
                       >
