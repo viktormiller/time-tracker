@@ -35,6 +35,7 @@ import { getHourLimits, type HourLimits } from './lib/hour-limits';
 import { ThemeToggle } from './components/ThemeToggle';
 import { useTheme, ThemeProvider } from './hooks/useTheme';
 import { exportToCSV } from './lib/csv-export';
+import { calculateSourcePercentages, type TimeEntrySource } from './lib/source-percentages';
 import { AddEntry } from './pages/AddEntry';
 import { Settings as SettingsPage } from './pages/Settings';
 import { Estimates } from './pages/Estimates';
@@ -70,6 +71,13 @@ interface DailyStats {
 type SortKey = 'date' | 'source' | 'project' | 'description' | 'duration';
 type SortDirection = 'asc' | 'desc';
 type DatePreset = 'TODAY' | 'WEEK' | 'MONTH' | 'QUARTER' | 'YEAR' | 'LAST_WEEK' | 'LAST_MONTH' | 'CUSTOM' | 'ALL';
+
+const SOURCE_BY_LABEL: Record<string, TimeEntrySource> = {
+  Toggl: 'TOGGL',
+  Tempo: 'TEMPO',
+  Clockify: 'CLOCKIFY',
+  Manual: 'MANUAL',
+};
 
 const API_URL = '/api';
 
@@ -503,6 +511,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
 
   const tableTotalHours = useMemo(() => tableEntries.reduce((acc, curr) => acc + curr.duration, 0), [tableEntries]);
   const uniqueProjects = useMemo(() => Array.from(new Set(entries.map(e => e.project).filter(Boolean))).sort(), [entries]);
+  const sourcePercentages = useMemo(() => calculateSourcePercentages(filteredEntries), [filteredEntries]);
 
   // Chart: only render bars for visible (non-excluded) sources.
   // Recharts derives legend + tooltip from rendered series, so this also
@@ -1133,7 +1142,15 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                     }} />
                     <YAxis tick={{fill: isDarkMode ? '#d1d5db' : '#9ca3af', fontSize: 12}} tickLine={false} axisLine={false} tickFormatter={(val) => `${val}h`} />
                     <Tooltip formatter={(val: number) => [val.toFixed(2) + ' h']} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: isDarkMode ? '#374151' : '#ffffff', color: isDarkMode ? '#f3f4f6' : '#1f2937' }} cursor={{fill: isDarkMode ? '#1f2937' : '#f9fafb'}} />
-                    <Legend iconType="circle" />
+                    <Legend
+                      iconType="circle"
+                      height={48}
+                      wrapperStyle={{ paddingTop: '8px' }}
+                      formatter={(value: string) => {
+                        const source = SOURCE_BY_LABEL[value];
+                        return source ? `${value} ${sourcePercentages[source]}%` : value;
+                      }}
+                    />
                     {isSourceVisible('TOGGL') && (
                     <Bar name="Toggl" dataKey="togglHours" stackId="a" fill="#E57CD8" radius={barRadius('TOGGL')} cursor="pointer" onClick={handleBarClick}>
                         {aggregatedData.map((entry, index) => (
