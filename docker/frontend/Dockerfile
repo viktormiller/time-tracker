@@ -3,7 +3,7 @@ FROM node:23-alpine AS builder
 WORKDIR /app
 
 # Upgrade npm to version 11 for lock file compatibility
-RUN npm install -g npm@latest
+RUN npm install -g npm@11
 
 COPY package*.json ./
 # Use npm install instead of npm ci due to optional peer dependency resolution issues

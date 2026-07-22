@@ -4,7 +4,7 @@ FROM node:23-slim AS builder
 WORKDIR /app
 
 # Upgrade npm to version 11 for lock file compatibility
-RUN npm install -g npm@latest
+RUN npm install -g npm@11
 
 # Copy package files
 COPY package*.json ./
