@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import {
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList, Cell, ReferenceLine
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell, ReferenceLine
 } from 'recharts';
 import {
   Upload, Loader2, RefreshCw, RotateCw, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown,
@@ -66,6 +66,7 @@ interface DailyStats {
   clockifyHours: number;
   projects: string[];
   isWeekend: boolean;
+  averageHours?: number | null;
 }
 
 type SortKey = 'date' | 'source' | 'project' | 'description' | 'duration';
@@ -475,6 +476,46 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
 
     return Array.from(map.values()).sort((a, b) => a.dateStr.localeCompare(b.dateStr));
   }, [filteredEntries, dateRange, datePreset]);
+
+  const averageWindow = datePreset === 'YEAR' || datePreset === 'ALL'
+    ? 30
+    : datePreset === 'QUARTER'
+      ? 14
+      : 7;
+
+  const chartData = useMemo(() => {
+    const today = endOfToday();
+
+    return aggregatedData.map((day, index) => {
+      if (parseISO(day.dateStr) > today) {
+        return { ...day, averageHours: null };
+      }
+
+      const windowStart = Math.max(0, index - averageWindow + 1);
+      const window = aggregatedData.slice(windowStart, index + 1);
+      const averageHours = window.reduce((sum, item) => sum + item.totalHours, 0) / window.length;
+
+      return { ...day, averageHours };
+    });
+  }, [aggregatedData, averageWindow]);
+
+  const chartTicks = useMemo(() => {
+    if (chartData.length > 90) {
+      return chartData
+        .filter(day => parseISO(day.dateStr).getDate() === 1)
+        .map(day => day.dateStr);
+    }
+
+    const step = chartData.length > 45 ? 14 : chartData.length > 20 ? 7 : 1;
+    return chartData.filter((_, index) => index % step === 0).map(day => day.dateStr);
+  }, [chartData]);
+
+  const formatChartTick = (dateStr: string) => {
+    const date = parseISO(dateStr);
+    if (chartData.length > 90) return format(date, 'MMM', { locale: de });
+    if (chartData.length > 20) return format(date, 'dd.MM');
+    return format(date, 'EE dd.MM', { locale: de });
+  };
 
   // Table Data
   const tableEntries = useMemo(() => {
@@ -1102,10 +1143,15 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
         </div>
 
         {/* CHART */}
-        <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 relative">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Tägliche Arbeitszeit</h2>
-            <div className="flex items-center gap-4">
+        <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 relative">
+          <div className="flex flex-wrap justify-between items-start gap-3 mb-6">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Tägliche Arbeitszeit</h2>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                Gleitender Durchschnitt über {averageWindow} Tage
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-4">
               {hourLimits.dailyLimit && (
                 <button
                   onClick={() => setShowDailyLimit(v => !v)}
@@ -1119,24 +1165,25 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                   {hourLimits.dailyLimit}h Limit
                 </button>
               )}
-              <div className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1"><MousePointerClick size={14} /><span>Balken klicken für Details</span></div>
+              <div className="hidden sm:flex text-xs text-gray-400 dark:text-gray-500 items-center gap-1"><MousePointerClick size={14} /><span>Balken klicken für Details</span></div>
             </div>
           </div>
           {aggregatedData.length > 0 ? (
-              <div className="h-[400px] w-full">
+              <div className="h-[340px] sm:h-[400px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={aggregatedData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }} onClick={handleBarClick}>
+                  <ComposedChart data={chartData} margin={{ top: 12, right: 12, left: -12, bottom: 5 }} onClick={handleBarClick}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#404040' : '#f3f4f6'} />
                     {hourLimits.dailyLimit && showDailyLimit && (
                       <ReferenceLine y={hourLimits.dailyLimit} stroke="#ef4444" strokeDasharray="6 3" strokeWidth={1.5} label={{ value: `${hourLimits.dailyLimit}h`, position: 'right', fill: '#ef4444', fontSize: 12 }} />
                     )}
-                    <XAxis dataKey="displayDate" tickLine={false} axisLine={false} tick={(props: any) => {
+                    <XAxis dataKey="dateStr" ticks={chartTicks} interval="preserveStartEnd" minTickGap={12} tickLine={false} axisLine={false} tick={(props: any) => {
                       const { x, y, payload } = props;
-                      const label: string = payload.value ?? '';
-                      const isWknd = label.startsWith('Sa') || label.startsWith('So');
+                      const dateStr: string = payload.value ?? '';
+                      const date = parseISO(dateStr);
+                      const isWknd = chartData.length <= 20 && isWeekend(date);
                       return (
-                        <text x={x} y={y + 12} textAnchor="middle" fontSize={12} fill={isWknd ? '#ef4444' : (isDarkMode ? '#d1d5db' : '#9ca3af')}>
-                          {label}
+                        <text x={x} y={y + 12} textAnchor="middle" fontSize={11} fill={isWknd ? '#ef4444' : (isDarkMode ? '#d1d5db' : '#9ca3af')}>
+                          {formatChartTick(dateStr)}
                         </text>
                       );
                     }} />
@@ -1179,9 +1226,17 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                         ))}
                     </Bar>
                     )}
-                    <Line type="monotone" dataKey="totalHours" name="Gesamt" legendType="none" stroke="none" dot={false} activeDot={false} isAnimationActive={false}>
-                        <LabelList dataKey="totalHours" position="top" offset={10} formatter={(val) => typeof val === 'number' && val > 0 ? val.toFixed(2) : ''} style={{ fontSize: '12px', fill: isDarkMode ? '#9ca3af' : '#6b7280', fontWeight: 600 }} />
-                    </Line>
+                    <Line
+                      type="monotone"
+                      dataKey="averageHours"
+                      name={`Ø ${averageWindow} Tage`}
+                      stroke="#F59E0B"
+                      strokeWidth={2.5}
+                      dot={false}
+                      activeDot={{ r: 4 }}
+                      connectNulls={false}
+                      isAnimationActive={false}
+                    />
                   </ComposedChart>
               </ResponsiveContainer>
               </div>
