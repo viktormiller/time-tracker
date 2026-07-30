@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import {
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell, ReferenceLine
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList, Cell, ReferenceLine
 } from 'recharts';
 import {
   Upload, Loader2, RefreshCw, RotateCw, XCircle, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown,
@@ -173,6 +173,8 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [showSyncModal, setShowSyncModal] = useState<'TOGGL' | 'TEMPO' | 'CLOCKIFY' | null>(null);
   const [showDailyLimit, setShowDailyLimit] = useState(true);
+  const [chartValuesVisibility, setChartValuesVisibility] = useState<boolean | null>(null);
+  const [showAverage, setShowAverage] = useState(true);
   const [syncDropdownOpen, setSyncDropdownOpen] = useState(false);
   const syncDropdownRef = useRef<HTMLDivElement>(null);
   const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
@@ -516,6 +518,10 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
     if (chartData.length > 20) return format(date, 'dd.MM');
     return format(date, 'EE dd.MM', { locale: de });
   };
+
+  // Keep compact ranges informative by default, while preserving the clean
+  // yearly view until the user explicitly chooses a preference.
+  const showChartValues = chartValuesVisibility ?? chartData.length <= 31;
 
   // Table Data
   const tableEntries = useMemo(() => {
@@ -1148,12 +1154,40 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
             <div>
               <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Tägliche Arbeitszeit</h2>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                Gleitender Durchschnitt über {averageWindow} Tage
+                {showAverage ? `Gleitender Durchschnitt über ${averageWindow} Tage` : 'Tägliche Summen nach Quelle'}
               </p>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-4">
+              <button
+                type="button"
+                aria-pressed={showChartValues}
+                onClick={() => setChartValuesVisibility(!showChartValues)}
+                className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border transition ${
+                  showChartValues
+                    ? 'border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
+                    : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
+                }`}
+              >
+                <span className="font-semibold">12.3h</span>
+                Stundenwerte
+              </button>
+              <button
+                type="button"
+                aria-pressed={showAverage}
+                onClick={() => setShowAverage(v => !v)}
+                className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border transition ${
+                  showAverage
+                    ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+                    : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-400 dark:text-gray-500'
+                }`}
+              >
+                <span className={`inline-block w-3 h-0 border-t-2 ${showAverage ? 'border-amber-500' : 'border-gray-400 dark:border-gray-500'}`} />
+                Ø Trend
+              </button>
               {hourLimits.dailyLimit && (
                 <button
+                  type="button"
+                  aria-pressed={showDailyLimit}
                   onClick={() => setShowDailyLimit(v => !v)}
                   className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border transition ${
                     showDailyLimit
@@ -1171,7 +1205,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
           {aggregatedData.length > 0 ? (
               <div className="h-[340px] sm:h-[400px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={chartData} margin={{ top: 12, right: 12, left: -12, bottom: 5 }} onClick={handleBarClick}>
+                  <ComposedChart data={chartData} margin={{ top: showChartValues ? 28 : 12, right: 12, left: -12, bottom: 5 }} onClick={handleBarClick}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#404040' : '#f3f4f6'} />
                     {hourLimits.dailyLimit && showDailyLimit && (
                       <ReferenceLine y={hourLimits.dailyLimit} stroke="#ef4444" strokeDasharray="6 3" strokeWidth={1.5} label={{ value: `${hourLimits.dailyLimit}h`, position: 'right', fill: '#ef4444', fontSize: 12 }} />
@@ -1226,17 +1260,40 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                         ))}
                     </Bar>
                     )}
-                    <Line
-                      type="monotone"
-                      dataKey="averageHours"
-                      name={`Ø ${averageWindow} Tage`}
-                      stroke="#F59E0B"
-                      strokeWidth={2.5}
-                      dot={false}
-                      activeDot={{ r: 4 }}
-                      connectNulls={false}
-                      isAnimationActive={false}
-                    />
+                    {showAverage && (
+                      <Line
+                        type="monotone"
+                        dataKey="averageHours"
+                        name={`Ø ${averageWindow} Tage`}
+                        stroke="#F59E0B"
+                        strokeWidth={2.5}
+                        dot={false}
+                        activeDot={{ r: 4 }}
+                        connectNulls={false}
+                        isAnimationActive={false}
+                      />
+                    )}
+                    {showChartValues && (
+                      <Line
+                        type="monotone"
+                        dataKey="totalHours"
+                        name="Gesamt"
+                        legendType="none"
+                        tooltipType="none"
+                        stroke="none"
+                        dot={false}
+                        activeDot={false}
+                        isAnimationActive={false}
+                      >
+                        <LabelList
+                          dataKey="totalHours"
+                          position="top"
+                          offset={8}
+                          formatter={(value) => typeof value === 'number' && value > 0 ? value.toFixed(2) : ''}
+                          style={{ fontSize: '11px', fill: isDarkMode ? '#9ca3af' : '#6b7280', fontWeight: 600 }}
+                        />
+                      </Line>
+                    )}
                   </ComposedChart>
               </ResponsiveContainer>
               </div>
