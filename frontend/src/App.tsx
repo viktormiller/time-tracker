@@ -515,7 +515,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const formatChartTick = (dateStr: string) => {
     const date = parseISO(dateStr);
     if (chartData.length > 90) return format(date, 'MMM', { locale: de });
-    if (chartData.length > 20) return format(date, 'dd.MM');
+    if (chartData.length > 45) return format(date, 'dd.MM');
     return format(date, 'EE dd.MM', { locale: de });
   };
 
@@ -1214,7 +1214,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                       const { x, y, payload } = props;
                       const dateStr: string = payload.value ?? '';
                       const date = parseISO(dateStr);
-                      const isWknd = chartData.length <= 20 && isWeekend(date);
+                      const isWknd = chartData.length <= 45 && isWeekend(date);
                       return (
                         <text x={x} y={y + 12} textAnchor="middle" fontSize={11} fill={isWknd ? '#ef4444' : (isDarkMode ? '#d1d5db' : '#9ca3af')}>
                           {formatChartTick(dateStr)}
