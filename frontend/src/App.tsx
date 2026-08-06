@@ -508,7 +508,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
         .map(day => day.dateStr);
     }
 
-    const step = chartData.length > 45 ? 14 : chartData.length > 20 ? 7 : 1;
+    const step = chartData.length > 45 ? 14 : chartData.length > 20 ? 2 : 1;
     return chartData.filter((_, index) => index % step === 0).map(day => day.dateStr);
   }, [chartData]);
 
