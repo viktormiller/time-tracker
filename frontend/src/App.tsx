@@ -173,6 +173,7 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
   const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [showSyncModal, setShowSyncModal] = useState<'TOGGL' | 'TEMPO' | 'CLOCKIFY' | null>(null);
   const [showDailyLimit, setShowDailyLimit] = useState(true);
+  const [chartWidth, setChartWidth] = useState(0);
   const [chartValuesVisibility, setChartValuesVisibility] = useState<boolean | null>(null);
   const [showAverage, setShowAverage] = useState(true);
   const [syncDropdownOpen, setSyncDropdownOpen] = useState(false);
@@ -508,9 +509,15 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
         .map(day => day.dateStr);
     }
 
+    if (chartWidth > 0 && chartWidth < 900 && chartData.length > 20 && chartData.length <= 45) {
+      return chartData
+        .filter(day => getDay(parseISO(day.dateStr)) === 0)
+        .map(day => day.dateStr);
+    }
+
     const step = chartData.length > 45 ? 14 : chartData.length > 20 ? 2 : 1;
     return chartData.filter((_, index) => index % step === 0).map(day => day.dateStr);
-  }, [chartData]);
+  }, [chartData, chartWidth]);
 
   const formatChartTick = (dateStr: string) => {
     const date = parseISO(dateStr);
@@ -1204,13 +1211,13 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
           </div>
           {aggregatedData.length > 0 ? (
               <div className="h-[340px] sm:h-[400px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" onResize={(width) => setChartWidth(width)}>
                   <ComposedChart data={chartData} margin={{ top: showChartValues ? 28 : 12, right: 12, left: -12, bottom: 5 }} onClick={handleBarClick}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? '#404040' : '#f3f4f6'} />
                     {hourLimits.dailyLimit && showDailyLimit && (
                       <ReferenceLine y={hourLimits.dailyLimit} stroke="#ef4444" strokeDasharray="6 3" strokeWidth={1.5} label={{ value: `${hourLimits.dailyLimit}h`, position: 'right', fill: '#ef4444', fontSize: 12 }} />
                     )}
-                    <XAxis dataKey="dateStr" ticks={chartTicks} interval="preserveStartEnd" minTickGap={12} tickLine={false} axisLine={false} tick={(props: any) => {
+                    <XAxis dataKey="dateStr" ticks={chartTicks} interval={0} tickLine={false} axisLine={false} tick={(props: any) => {
                       const { x, y, payload } = props;
                       const dateStr: string = payload.value ?? '';
                       const date = parseISO(dateStr);
@@ -1222,7 +1229,14 @@ function AuthenticatedApp({ logout }: { logout: () => void }) {
                       );
                     }} />
                     <YAxis tick={{fill: isDarkMode ? '#d1d5db' : '#9ca3af', fontSize: 12}} tickLine={false} axisLine={false} tickFormatter={(val) => `${val}h`} />
-                    <Tooltip formatter={(val: number) => [val.toFixed(2) + ' h']} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: isDarkMode ? '#374151' : '#ffffff', color: isDarkMode ? '#f3f4f6' : '#1f2937' }} cursor={{fill: isDarkMode ? '#1f2937' : '#f9fafb'}} />
+                    <Tooltip
+                      formatter={(val: number) => [val.toFixed(2) + ' h']}
+                      labelFormatter={(label) => typeof label === 'string'
+                        ? format(parseISO(label), 'EE dd.MM.yy', { locale: de })
+                        : String(label)}
+                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', backgroundColor: isDarkMode ? '#374151' : '#ffffff', color: isDarkMode ? '#f3f4f6' : '#1f2937' }}
+                      cursor={{fill: isDarkMode ? '#1f2937' : '#f9fafb'}}
+                    />
                     <Legend
                       iconType="circle"
                       height={48}
